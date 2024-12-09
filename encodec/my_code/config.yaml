@@ -7,9 +7,9 @@ common:
   # amp: False
 
 dataset:
-  batch_size: 48
+  batch_size: 8
   max_length: 144000 # 4 hours at 10 hz
-  num_workers: 32
+  num_workers: 4
   debug: False
 
 checkpoint:
