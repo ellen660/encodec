@@ -4,7 +4,7 @@ import typing as tp
 import torch
 from torch import autograd
 
-from .distrib import average_metrics
+from distrib import average_metrics
 
 
 def averager(beta: float = 1):

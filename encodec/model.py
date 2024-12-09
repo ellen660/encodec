@@ -82,17 +82,17 @@ class EncodecModel(nn.Module):
                  encoder: m.SEANetEncoder,
                  decoder: m.SEANetDecoder,
                  quantizer: qt.ResidualVectorQuantizer,
-                 target_bandwidths: tp.List[float],
-                 sample_rate: int,
-                 channels: int,
-                 normalize: bool = False,
-                 segment: tp.Optional[float] = None,
+                 target_bandwidths: tp.List[float], #I don't really understand this 
+                 sample_rate: int, #10 fs
+                 channels: int, #1
+                 normalize: bool = False, #clip -6,6 then normalize by mean/std
+                 segment: tp.Optional[float] = None, #what's this
                  overlap: float = 0.01,
                  name: str = 'unset'):
         super().__init__()
         self.bandwidth: tp.Optional[float] = None
         self.target_bandwidths = target_bandwidths
-        self.encoder = encoder
+        self.encoder = encoder 
         self.quantizer = quantizer
         self.decoder = decoder
         self.sample_rate = sample_rate
@@ -150,11 +150,14 @@ class EncodecModel(nn.Module):
         assert self.segment is None or duration <= 1e-5 + self.segment
 
         if self.normalize:
-            mono = x.mean(dim=1, keepdim=True)
-            volume = mono.pow(2).mean(dim=2, keepdim=True).sqrt()
-            scale = 1e-8 + volume
-            x = x / scale
-            scale = scale.view(-1, 1)
+            x = x.clamp(-6, 6)
+            x = (x - x.mean()) / (1e-8 + x.std())
+            # mono = x.mean(dim=1, keepdim=True)
+            # volume = mono.pow(2).mean(dim=2, keepdim=True).sqrt()
+            # scale = 1e-8 + volume
+            # x = x / scale
+            # scale = scale.view(-1, 1)
+            scale = x.std()
         else:
             scale = None
 
@@ -225,9 +228,10 @@ class EncodecModel(nn.Module):
                    model_norm: str = 'weight_norm',
                    audio_normalize: bool = False,
                    segment: tp.Optional[float] = None,
-                   name: str = 'unset'):
-        encoder = m.SEANetEncoder(channels=channels, norm=model_norm, causal=causal)
-        decoder = m.SEANetDecoder(channels=channels, norm=model_norm, causal=causal)
+                   name: str = 'unset',
+                   ratios=[8, 5, 4, 2]):
+        encoder = m.SEANetEncoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios)
+        decoder = m.SEANetDecoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios)
         n_q = int(1000 * target_bandwidths[-1] // (math.ceil(sample_rate / encoder.hop_length) * 10))
         quantizer = qt.ResidualVectorQuantizer(
             dimension=encoder.dimension,
