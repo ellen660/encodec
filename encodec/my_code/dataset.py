@@ -6,7 +6,7 @@ import torch
 import pandas as pd
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
-from encodec.my_code.preprocess import signal_crop, norm_sig, detect_motion_iterative
+from .preprocess import signal_crop, norm_sig, detect_motion_iterative
 from scipy.ndimage import zoom
 
 BREATHING_DIR = "/data/netmit/wifall/ADetect/data/shhs2_new/thorax"

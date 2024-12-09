@@ -1,0 +1,49 @@
+balancer:
+  weights:
+    l_f: 1
+    l_t: 1
+checkpoint:
+  checkpoint_path: ''
+  disc_checkpoint_path: ''
+  resume: false
+  save_folder: ./checkpoints/
+  save_location: ${checkpoint.save_folder}/bs${datasets.batch_size}_cut${datasets.tensor_cut}_length${datasets.fixed_length}_
+common:
+  log_interval: 10
+  max_epoch: 300
+  save_interval: 2
+  seed: 42
+  test_interval: 5
+dataset:
+  batch_size: 48
+  debug: false
+  max_length: 144000
+  num_workers: 32
+distributed:
+  data_parallel: true
+  world_size: 8
+lr_scheduler:
+  warmup_epoch: 10
+model:
+  audio_normalize: true
+  causal: true
+  channels: 1
+  filters: 32
+  name: my_encodec
+  norm: weight_norm
+  ratios:
+  - 8
+  - 5
+  - 4
+  - 2
+  sample_rate: 10
+  segment: None
+  target_bandwidths:
+  - 1.5
+  - 3.0
+  - 6.0
+  - 12.0
+  - 24.0
+optimization:
+  lr: 3e-4
+  weight_decay: 1e-6

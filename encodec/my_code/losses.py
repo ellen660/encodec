@@ -8,8 +8,8 @@ def loss_fn_l1(input, output):
     return l1Loss(input, output)
 
 def loss_fn_l2(input, output):
-    l1Loss = torch.nn.L2Loss(reduction='mean')
-    return l1Loss(input, output)
+    l2Loss = torch.nn.MSELoss(reduction='mean')
+    return l2Loss(input, output)
 
 # def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_rate=24000):
 def total_loss(input, output, sample_rate=10):
