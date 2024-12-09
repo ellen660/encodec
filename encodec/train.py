@@ -125,7 +125,7 @@ def init_dataset(config):
     val_loader = DataLoader(val_dataset, batch_size=config.dataset.batch_size, shuffle=False, num_workers=config.dataset.num_workers)
     return train_loader, val_loader
 
-def init_model(config):
+def init_model(config, device):
     model = EncodecModel._get_model(
         config.model.target_bandwidths, 
         config.model.sample_rate, 
@@ -156,6 +156,7 @@ def init_model(config):
         print(f"Using {torch.cuda.device_count()} GPUs")
         model = nn.DataParallel(model)
         model = model.to(device)
+        breakpoint()
     return model
 
 if __name__ == "__main__":
@@ -165,14 +166,16 @@ if __name__ == "__main__":
 
     # Load the YAML file
     config = load_config("my_code/config.yaml", log_dir)
-    writer = init_logger(current_time)
+    writer = init_logger(log_dir)
 
     device = torch.device("cuda")
     torch.manual_seed(config.common.seed)
 
     train_loader, val_loader = init_dataset(config)
-    model = init_model(config)
+    model = init_model(config, device)
+    breakpoint()
     optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), weight_decay=float(config.optimization.weight_decay))
+    #convert to device
 
     # instantiate loss balancer
     # balancer = Balancer(config.balancer.weights)
