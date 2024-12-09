@@ -149,17 +149,18 @@ class EncodecModel(nn.Module):
         duration = length / self.sample_rate
         assert self.segment is None or duration <= 1e-5 + self.segment
 
-        if self.normalize:
-            x = x.clamp(-6, 6)
-            x = (x - x.mean()) / (1e-8 + x.std())
-            # mono = x.mean(dim=1, keepdim=True)
-            # volume = mono.pow(2).mean(dim=2, keepdim=True).sqrt()
-            # scale = 1e-8 + volume
-            # x = x / scale
-            # scale = scale.view(-1, 1)
-            scale = x.std()
-        else:
-            scale = None
+        # if self.normalize:
+        #     x = x.clamp(-6, 6)
+        #     x = (x - x.mean()) / (1e-8 + x.std())
+        #     # mono = x.mean(dim=1, keepdim=True)
+        #     # volume = mono.pow(2).mean(dim=2, keepdim=True).sqrt()
+        #     # scale = 1e-8 + volume
+        #     # x = x / scale
+        #     # scale = scale.view(-1, 1)
+        #     scale = x.std()
+        # else:
+        #     scale = None
+        scale = None
 
         emb = self.encoder(x)
         codes = self.quantizer.encode(emb, self.frame_rate, self.bandwidth)
