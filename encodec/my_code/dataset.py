@@ -50,7 +50,7 @@ class BreathingDataset(Dataset):
         # print(f'breathing shape: {breathing.shape}, fs: {fs}')
         assert fs == 10, "Sampling rate is not 10Hz"
         breathing = breathing[:self.max_length] # 4 hours
-        breathing = self.process_signal(breathing, fs)
+        # breathing = self.process_signal(breathing, fs)
         breathing = torch.tensor(breathing, dtype=torch.float32)
 
         #clip breathing -6,6
