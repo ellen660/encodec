@@ -39,7 +39,8 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-from .. import distrib
+# from .. import distrib
+import distrib
 
 
 def default(val: tp.Any, d: tp.Any) -> tp.Any:

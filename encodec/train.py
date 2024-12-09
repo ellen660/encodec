@@ -1,6 +1,6 @@
-from encodec.model import EncodecModel
-from encodec.my_code.dataset import BreathingDataset
-from encodec.my_code.losses import total_loss, loss_fn_l1
+from model import EncodecModel
+from my_code.dataset import BreathingDataset
+from my_code.losses import loss_fn_l1, loss_fn_l2
 # from msstftd import MultiScaleSTFTDiscriminator
 # from scheduler import WarmupCosineLrScheduler
 # from utils import (save_master_checkpoint, set_seed,
@@ -40,7 +40,10 @@ def train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scale
     for i, (x, y) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
         x = x.to(device)
         x_hat = model(x)
-        loss = loss_fn_l1(x, x_hat)
+        # loss_l1 = loss_fn_l1(x, x_hat)
+        loss_l2 = loss_fn_l2(x, x_hat)
+        loss = loss_l2
+        
         epoch_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
@@ -59,10 +62,11 @@ def test(epoch, model, val_loader, config, writer):
     model.eval()
     epoch_loss = 0
     for i, (x, y) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
-        print(f'x shape: {x.shape}')
         x = x.to(device)
         x_hat = model(x)
-        loss = loss_fn_l1(x, x_hat)
+        # loss_l1 = loss_fn_l1(x, x_hat)
+        loss_l2 = loss_fn_l2(x, x_hat)
+        loss = loss_l2
         epoch_loss += loss.item()
 
         # metrics.fill_metrics(y_pred, y, loss.item())
@@ -125,7 +129,7 @@ def init_dataset(config):
     val_loader = DataLoader(val_dataset, batch_size=config.dataset.batch_size, shuffle=False, num_workers=config.dataset.num_workers)
     return train_loader, val_loader
 
-def init_model(config, device):
+def init_model(config):
     model = EncodecModel._get_model(
         config.model.target_bandwidths, 
         config.model.sample_rate, 
@@ -156,26 +160,24 @@ def init_model(config, device):
         print(f"Using {torch.cuda.device_count()} GPUs")
         model = nn.DataParallel(model)
         model = model.to(device)
-        breakpoint()
     return model
 
 if __name__ == "__main__":
     
     current_time = datetime.now().strftime('%m-%d_%H-%M')
-    log_dir = os.path.join(f'/data/scratch/ellen660/encodec/encodec/runs', f"{current_time}")
+    log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/runs', f"{current_time}")
 
     # Load the YAML file
-    config = load_config("my_code/config.yaml", log_dir)
-    writer = init_logger(log_dir)
+    config = load_config("encodec/my_code/config.yaml", log_dir)
+    writer = init_logger(current_time)
 
     device = torch.device("cuda")
     torch.manual_seed(config.common.seed)
 
     train_loader, val_loader = init_dataset(config)
-    model = init_model(config, device)
-    breakpoint()
+    model = init_model(config)
+    model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), weight_decay=float(config.optimization.weight_decay))
-    #convert to device
 
     # instantiate loss balancer
     # balancer = Balancer(config.balancer.weights)
