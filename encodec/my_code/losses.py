@@ -7,6 +7,10 @@ def loss_fn_l1(input, output):
     l1Loss = torch.nn.L1Loss(reduction='mean')
     return l1Loss(input, output)
 
+def loss_fn_l2(input, output):
+    l1Loss = torch.nn.L2Loss(reduction='mean')
+    return l1Loss(input, output)
+
 # def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_rate=24000):
 def total_loss(input, output, sample_rate=10):
     """This function is used to compute the total loss of the encodec generator.
@@ -27,26 +31,18 @@ def total_loss(input, output, sample_rate=10):
     Returns:
         loss: total loss
     """
-    relu = torch.nn.ReLU()
-    l1Loss = torch.nn.L1Loss(reduction='mean')
     l2Loss = torch.nn.MSELoss(reduction='mean')
     # Collect losses as defined in paper for use with balancer
-    # l_t - L1 distance between the target and compressed audio over the time domain
-    # l_f - linear combination between the L1 and L2 losses over the mel-spectrogram using several time scales
     # l_g - adversarial loss for the generator
     # l_feat - relative feature matching loss for the generator
-    l_t = torch.tensor([0.0], device='cuda', requires_grad=True)
+    # l_t = torch.tensor([0.0], device='cuda', requires_grad=True)
     # l_f = torch.tensor([0.0], device='cuda', requires_grad=True)
     # l_g = torch.tensor([0.0], device='cuda', requires_grad=True)
     # l_feat = torch.tensor([0.0], device='cuda', requires_grad=True)
 
     #time domain loss, output_wav is the output of the generator
-    l_t = l1Loss(input, output) 
-
-    #frequency domain loss, window length is 2^i, hop length is 2^i/4, i \in [5,11]. combine l1 and l2 loss
-    # for i in range(5, 12): #e=5,...,11
-    #     fft = Audio2Mel(n_fft=2 ** i,win_length=2 ** i, hop_length=(2 ** i) // 4, n_mel_channels=64, sampling_rate=sample_rate)
-    #     l_f = l_f + l1Loss(fft(input_wav), fft(output_wav)) + l2Loss(fft(input_wav), fft(output_wav))
+    # l_t = l1Loss(input, output)
+    l_t = l2Loss(input, output)
 
     #generator loss and feat loss, D_k(\hat x) = logits_fake[k], D_k^l(x) = fmap_real[k][l], D_k^l(\hat x) = fmap_fake[k][l]
     # l_g = \sum max(0, 1 - D_k(\hat x)) / K, K = disc.num_discriminators = len(fmap_real) = len(fmap_fake) = len(logits_fake) = 3
