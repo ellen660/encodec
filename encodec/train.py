@@ -38,10 +38,11 @@ def train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scale
     model.train()
     epoch_loss = 0
     for i, (x, y) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
+        # print(f'x shape: {x.shape}')
         x = x.to(device)
         x_hat = model(x)
         # loss_l1 = loss_fn_l1(x, x_hat)
-        loss_l2 = loss_fn_l2(x, x_hat)
+        loss_l2 = loss_fn_l1(x, x_hat)
         loss = loss_l2
         
         epoch_loss += loss.item()
@@ -53,9 +54,7 @@ def train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scale
     print(f"Epoch {epoch}, training loss: {epoch_loss}")
     if epoch % config.common.log_interval == 0:
         print('logging')
-        # computed_metrics = metrics.compute_and_log_metrics(epoch_loss)
-        # logger(writer, computed_metrics, 'train', epoch)
-    # metrics.clear_metrics()
+        logger(writer, loss.item(), 'train', epoch)
 
 @torch.no_grad()
 def test(epoch, model, val_loader, config, writer):
@@ -65,34 +64,19 @@ def test(epoch, model, val_loader, config, writer):
         x = x.to(device)
         x_hat = model(x)
         # loss_l1 = loss_fn_l1(x, x_hat)
-        loss_l2 = loss_fn_l2(x, x_hat)
+        loss_l2 = loss_fn_l1(x, x_hat)
         loss = loss_l2
         epoch_loss += loss.item()
 
-        # metrics.fill_metrics(y_pred, y, loss.item())
     print(f"Epoch {epoch}, validation loss: {epoch_loss}")
     if epoch % config.common.log_interval == 0:
         print('logging')
-        # computed_metrics = metrics.compute_and_log_metrics(epoch_loss)
-        # logger(writer, computed_metrics, 'train', epoch)
-    # metrics.clear_metrics()
-
+        logger(writer, loss.item(), 'val', epoch)
 
 #Logger for tensorboard
-def logger(writer, metrics, phase, epoch_index):
+def logger(writer, loss, phase, epoch_index):
+    writer.add_scalar("%s/%s"%(phase, 'loss'), loss, epoch_index)
 
-    for key, value in metrics.items():
-        # if key == 'confusion':
-        #     fig = plot_confusion_matrix(metrics[key])
-        #     writer.add_figure(f"Confusion Matrix {phase}", fig, epoch_index)
-        # else:
-        ## check for 2 class multiclass
-        if type(value)!= float and len(value.shape) > 0 and value.shape[0] == 2:
-            value = value[1]
-        elif type(value)!= float and len(value.shape) > 0 and value.shape[0] > 2:
-            raise Exception("Need to handle multiclass")
-            # bp()
-        writer.add_scalar("%s/%s"%(phase, key), value, epoch_index)
     writer.flush()
 
 class ConfigNamespace:
@@ -114,7 +98,6 @@ def load_config(filepath, log_dir):
     return ConfigNamespace(config_dict)
 
 def init_logger(log_dir):
-    # comment = f'feature_size_{feature_dim}_fc1_size_{fc1_size}_num_layers_{num_layers_vit}_num_heads_{num_heads}'                                                                                                                                                        
     print(f'log_dir: {log_dir}')
     writer = SummaryWriter(log_dir=log_dir)
     return writer
@@ -150,6 +133,7 @@ def init_model(config):
 
     # log model, disc model parameters and train mode
     print(model)
+    # breakpoint()
     # logger.info(disc_model)
     # logger.info(config)
     # logger.info(f"Encodec Model Parameters: {count_parameters(model)}")
@@ -165,11 +149,12 @@ def init_model(config):
 if __name__ == "__main__":
     
     current_time = datetime.now().strftime('%m-%d_%H-%M')
-    log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/runs', f"{current_time}")
+    # log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/runs', f"{current_time}")
+    log_dir = f'/data/scratch/ellen660/encodec/encodec/runs/{current_time}'
 
     # Load the YAML file
     config = load_config("encodec/my_code/config.yaml", log_dir)
-    writer = init_logger(current_time)
+    writer = init_logger(log_dir)
 
     device = torch.device("cuda")
     torch.manual_seed(config.common.seed)

@@ -118,8 +118,14 @@ class NormConv1d(nn.Module):
 
     def forward(self, x):
         x = self.conv(x)
+        # x_transposed = x.transpose(1, 2)  # Change shape to (12, 144000, 32)
+        # print(f'before: {x_transposed.shape}')
+        # output = self.norm(x.transpose(1,2)) # Normalize and return to original shape
         x = self.norm(x)
+        # print(f'after: {output.shape}')
+        # print(f'x.shape: {x}')
         return x
+        # return output.transpose(1, 2)
 
 
 class NormConv2d(nn.Module):
@@ -194,6 +200,7 @@ class SConv1d(nn.Module):
 
     def forward(self, x):
         B, C, T = x.shape
+        # print(f'x.shape: {x.shape}')
         kernel_size = self.conv.conv.kernel_size[0]
         stride = self.conv.conv.stride[0]
         dilation = self.conv.conv.dilation[0]
@@ -208,6 +215,8 @@ class SConv1d(nn.Module):
             padding_right = padding_total // 2
             padding_left = padding_total - padding_right
             x = pad1d(x, (padding_left, padding_right + extra_padding), mode=self.pad_mode)
+        # print(f'x.shape: {x.shape}')
+        # print(f'output shape: {self.conv(x)}')
         return self.conv(x)
 
 

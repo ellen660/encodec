@@ -23,6 +23,8 @@ class ConvLayerNorm(nn.LayerNorm):
 
     def forward(self, x):
         x = einops.rearrange(x, 'b ... t -> b t ...')
+        # print(f'before: {x.shape}')
         x = super().forward(x)
+        # print(f'after: {x.shape}')
         x = einops.rearrange(x, 'b t ... -> b ... t')
-        return
+        return x
