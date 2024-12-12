@@ -1,0 +1,74 @@
+exp_details:
+  name: '091224_l1'
+  description: '4 hours at 10 hz'
+  date: '2021-09-12'
+
+common:
+  save_interval: 2
+  test_interval: 5
+<<<<<<< HEAD:encodec/my_code/config.yaml
+  log_interval: 5
+  max_epoch: 75
+=======
+  log_interval: 1
+  max_epoch: 300
+>>>>>>> bca7ccc49481794913eebfe5594d3f69e2a691b8:encodec/params/091224_l1.yaml
+  seed: 42
+  # amp: False
+
+dataset:
+  batch_size: 48
+  max_length: 144000 # 4 hours at 10 hz
+  num_workers: 10
+  debug: False
+
+checkpoint:
+  resume: False
+  checkpoint_path: ''
+  disc_checkpoint_path: ''
+  save_folder: './checkpoints/'
+  save_location: '${checkpoint.save_folder}/bs${datasets.batch_size}_cut${datasets.tensor_cut}_length${datasets.fixed_length}_' 
+
+optimization:
+  lr: 1e-4
+  weight_decay: 1e-6
+  # disc_lr: 3e-4
+
+loss:
+  weight_l1: 1.
+  weight_l2: 0.
+
+lr_scheduler:
+  warmup_epoch: 30
+
+model:
+  target_bandwidths: [0.1]
+  sample_rate: 10
+  channels: 1
+  # train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
+  audio_normalize: True
+  filters: 32
+  # ratios: [8, 5, 4, 2] #320 downsampling 
+  ratios: [5, 2, 1, 1] # 10 downsampling
+  # disc_win_lengths: [1024, 2048, 512]
+  # disc_hop_lengths: [256, 512, 128]
+  # disc_n_ffts: [1024, 2048, 512]
+  causal: False
+  # norm: 'weight_norm'
+  norm: 'layer_norm'
+  segment: None
+  name: 'my_encodec'
+
+distributed:
+  data_parallel: True
+  world_size: 8 
+  # find_unused_parameters: False
+  # torch_distributed_debug: False
+  # init_method: tcp
+
+balancer:
+  weights:
+    l_t: 1
+    l_f: 1
+    # l_g: 3
+    # l_feat: 3

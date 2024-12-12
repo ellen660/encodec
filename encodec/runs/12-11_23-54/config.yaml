@@ -9,16 +9,16 @@ checkpoint:
   save_folder: ./checkpoints/
   save_location: ${checkpoint.save_folder}/bs${datasets.batch_size}_cut${datasets.tensor_cut}_length${datasets.fixed_length}_
 common:
-  log_interval: 10
+  log_interval: 2
   max_epoch: 300
   save_interval: 2
   seed: 42
   test_interval: 5
 dataset:
-  batch_size: 8
-  debug: true
+  batch_size: 48
+  debug: false
   max_length: 144000
-  num_workers: 32
+  num_workers: 10
 distributed:
   data_parallel: true
   world_size: 8

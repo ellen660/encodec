@@ -15,10 +15,10 @@ common:
   seed: 42
   test_interval: 5
 dataset:
-  batch_size: 48
+  batch_size: 8
   debug: false
   max_length: 144000
-  num_workers: 32
+  num_workers: 4
 distributed:
   data_parallel: true
   world_size: 8

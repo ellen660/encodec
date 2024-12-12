@@ -18,7 +18,7 @@ from customAudioDataset import collate_fn
 from losses import disc_loss, total_loss
 from model import EncodecModel
 from msstftd import MultiScaleSTFTDiscriminator
-from scheduler import WarmupCosineLrScheduler
+# from scheduler import WarmupCosineLrScheduler
 from utils import (count_parameters, save_master_checkpoint, set_seed,
                    start_dist_train)
 from balancer import Balancer
