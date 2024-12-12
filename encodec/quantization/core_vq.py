@@ -344,7 +344,7 @@ class VectorQuantization(nn.Module):
         # print(f'self.commitment_weight {self.commitment_weight}')
         # print(f'self.training {self.training}')
         # sys.exit()
-        print(f'device {device}')
+        # print(f'device {device}')
         loss = torch.tensor([0.0], device=device, requires_grad=self.training)
 
         if self.training:

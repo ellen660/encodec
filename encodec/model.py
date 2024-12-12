@@ -146,16 +146,21 @@ class EncodecModel(nn.Module):
         else:
             stride = self.segment_stride  # type: ignore
             assert stride is not None
-        print(f'segment_length: {segment_length}')
-        # sys.exit()
-
+        # print(f'segment_length: {segment_length}')
         encoded_frames: tp.List[EncodedFrame] = []
+        commit_loss = []
         for offset in range(0, length, stride):
             frame = x[:, :, offset: offset + segment_length]
-            encoded_frames.append(self._encode_frame(frame))
-        print(f'{encoded_frames[0][0].device}')
-        # sys.exit()
-        return encoded_frames
+            # encoded_frames.append(self._encode_frame(frame))
+
+            codes, loss = self._encode_frame(frame)
+            encoded_frames.append(codes)
+            commit_loss.append(loss)
+
+        # sum the commit loss
+        commit_loss = torch.sum(torch.stack(commit_loss))
+
+        return encoded_frames, commit_loss
 
     def _encode_frame(self, x: torch.Tensor) -> EncodedFrame:
         length = x.shape[-1]
@@ -183,7 +188,7 @@ class EncodecModel(nn.Module):
         # print(f'commit_loss device: {quantized_result.commit_loss.device}')
         # sys.exit()
 
-        return codes, torch.sum(quantized_result.commit_loss)
+        return (codes, scale), torch.sum(quantized_result.commit_loss)
 
     def decode(self, encoded_frames: tp.List[EncodedFrame]) -> torch.Tensor:
         """Decode the given frames into a waveform.
@@ -208,21 +213,16 @@ class EncodecModel(nn.Module):
         return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        frames = self.encode(x)
+        # frames = self.encode(x)
         # print(f'frames: {frames}')
         # print([frame[1] for frame in frames])
         # print(f'num frames: {len(frames)}')
         # print(f'segment_length: {self.segment}')
+        frames, commit_loss = self.encode(x)
         
         # flatten the frames
         codes = torch.cat([frame[0] for frame in frames], dim=-1)
-        commit_loss = torch.sum([frame[1] for frame in frames]) / len(frames)
-        # commit_loss = torch.sum(frames[0][1])
-        # print(f'codes: {codes}')
-        # print(f'commit_loss: {commit_loss}')
-        #convert to device
-        # print(f'device: {commit_loss.device}')
-        # sys.exit()
+
         return self.decode(frames)[:, :, :x.shape[-1]], codes, commit_loss
 
     def set_target_bandwidth(self, bandwidth: float):

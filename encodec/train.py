@@ -47,7 +47,8 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,scale
         x_hat, codes, commit_loss = model(x)
         loss_l1 = loss_fn_l1(x, x_hat)
         loss_l2 = loss_fn_l2(x, x_hat)
-        print(f'commitment loss: {commit_loss}')
+        commit_loss = torch.mean(commit_loss)
+        # print(f'commitment loss: {commit_loss}')
         loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * commit_loss
 
         epoch_loss += loss.item()
@@ -57,6 +58,11 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,scale
 
         # add the loss to the tensorboard
         logger(writer, {'Loss per step': loss.item()}, 'train', epoch*len(train_loader) + i)
+
+        # log all the losses
+        logger(writer, {'L1 Loss': loss_l1.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'L2 Loss': loss_l2.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Commitment Loss': commit_loss.item()}, 'train', epoch*len(train_loader) + i)
 
         max_gradient = torch.tensor(0.0).to(device)
         for param in model.parameters():
@@ -94,6 +100,7 @@ def test(epoch, model, val_loader, config, writer):
         x_hat, codes, commit_loss = model(x)
         loss_l1 = loss_fn_l1(x, x_hat)
         loss_l2 = loss_fn_l2(x, x_hat)
+        commit_loss = torch.mean(commit_loss)
         loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * commit_loss
         epoch_loss += loss.item()
 
@@ -206,8 +213,8 @@ if __name__ == "__main__":
     # Load the YAML file
     config = load_config("encodec/params/%s.yaml" % args.exp_name)
 
-    # log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', f"{config.exp_details.name}")
-    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{config.exp_details.date}'
+    log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', f"{config.exp_details.name}")
+    # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{config.exp_details.date}'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
         
@@ -235,7 +242,7 @@ if __name__ == "__main__":
     # balancer = Balancer(config.balancer.weights)
     # if balancer:
     #     print(f'Loss balancer with weights {balancer.weights} instantiated')
-    # test(0, model, val_loader, config, writer)
+    test(0, model, val_loader, config, writer)
     for epoch in tqdm(range(1, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         # train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scaler_disc=None,writer=None,balancer=None):
         train_one_step(epoch, optimizer, scheduler, model, train_loader, config=config,writer=writer)
