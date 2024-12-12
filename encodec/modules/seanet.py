@@ -7,6 +7,7 @@
 """Encodec SEANet-based encoder and decoder implementation."""
 
 import typing as tp
+import sys
 
 import numpy as np
 import torch.nn as nn

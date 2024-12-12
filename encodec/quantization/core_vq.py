@@ -41,6 +41,7 @@ import torch.nn.functional as F
 
 # from .. import distrib
 import distrib
+import sys
 
 
 def default(val: tp.Any, d: tp.Any) -> tp.Any:
@@ -173,13 +174,45 @@ class EuclideanCodebook(nn.Module):
         x = rearrange(x, "... d -> (...) d")
         return x
 
+    # TODO: ERROR! every segment is getting mapped to the same index
     def quantize(self, x):
         embed = self.embed.t()
+
+        # plot the distribution of the embeddings and x
+        # move to cpu
+        # plt.hist(x.cpu().detach().numpy().flatten(), bins=100, alpha=0.5, label='x', density=True)
+        # plt.hist(embed.cpu().detach().numpy().flatten(), bins=100, alpha=0.5, label='embed', density=True)
+        
+        # plt.legend(loc='upper right')
+        # plt.savefig('embed_x.png')
+        # plt.close()
+
+        # apply instance norm 1d to x
+
+        # plot the distribution of x along each dimension
+        # combine the first two dimensions
+        # shape of x: (batch_size, seq_len, dim)
+        # x = x.view(-1, x.shape[-1])
+        # print(x.shape)
+
+        # x = x.cpu().detach().numpy()
+
+        # for i in range(x.shape[1]):
+        #     plt.hist(x[:, i], bins=100, alpha=0.5, density=True)
+        # plt.savefig('x.png')
+        # sys.exit()
+
         dist = -(
             x.pow(2).sum(1, keepdim=True)
             - 2 * x @ embed
             + embed.pow(2).sum(0, keepdim=True)
         )
+
+        # print(dist)
+        # print(dist.shape)
+        # print(torch.argmax(dist, dim=-1))
+        # sys.exit()
+
         embed_ind = dist.max(dim=-1).indices
         return embed_ind
 
@@ -270,10 +303,7 @@ class VectorQuantization(nn.Module):
         self.epsilon = epsilon
         self.commitment_weight = commitment_weight
 
-        self._codebook = EuclideanCodebook(dim=_codebook_dim, codebook_size=codebook_size,
-                                           kmeans_init=kmeans_init, kmeans_iters=kmeans_iters,
-                                           decay=decay, epsilon=epsilon,
-                                           threshold_ema_dead_code=threshold_ema_dead_code)
+        self._codebook = EuclideanCodebook(dim=_codebook_dim, codebook_size=codebook_size, kmeans_init=kmeans_init, kmeans_iters=kmeans_iters, decay=decay, epsilon=epsilon, threshold_ema_dead_code=threshold_ema_dead_code)
         self.codebook_size = codebook_size
 
     @property
@@ -354,9 +384,14 @@ class ResidualVectorQuantization(nn.Module):
         for layer in self.layers[:n_q]:
             indices = layer.encode(residual)
             quantized = layer.decode(indices)
+            # print(indices)
+            # print(residual)
+            # print(quantized)
             residual = residual - quantized
             all_indices.append(indices)
         out_indices = torch.stack(all_indices)
+
+        # sys.exit()
         return out_indices
 
     def decode(self, q_indices: torch.Tensor) -> torch.Tensor:

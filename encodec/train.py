@@ -1,6 +1,7 @@
 from model import EncodecModel
 from my_code.dataset import BreathingDataset
 from my_code.losses import loss_fn_l1, loss_fn_l2
+from my_code.schedulers import LinearWarmupCosineAnnealingLR
 # from msstftd import MultiScaleSTFTDiscriminator
 # from scheduler import WarmupCosineLrScheduler
 # from utils import (save_master_checkpoint, set_seed,
@@ -19,8 +20,11 @@ import random
 from collections import defaultdict
 # Define train one step function
 from tqdm import tqdm
+import argparse
 
-def train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scaler_disc=None,writer=None,balancer=None):
+import sys
+
+def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,scaler=None,scaler_disc=None,writer=None,balancer=None):
     """train one step function
 
     Args:
@@ -39,44 +43,69 @@ def train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scale
     epoch_loss = 0
     for i, (x, y) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
         x = x.to(device)
-        x_hat = model(x)
-        # loss_l1 = loss_fn_l1(x, x_hat)
+        x_hat, codes = model(x)
+        loss_l1 = loss_fn_l1(x, x_hat)
         loss_l2 = loss_fn_l2(x, x_hat)
-        loss = loss_l2
-        
+        loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2
+
         epoch_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
-        # metrics.fill_metrics(y_pred, y, loss.item())
-    print(f"Epoch {epoch}, training loss: {epoch_loss}")
+        # add the loss to the tensorboard
+        logger(writer, {'Loss per step': loss.item()}, 'train', epoch*len(train_loader) + i)
+
+        max_gradient = torch.tensor(0.0).to(device)
+        for param in model.parameters():
+            if param.grad is not None:
+                max_gradient = max(max_gradient, param.grad.abs().max().item())
+
+        # log the max gradient
+        logger(writer, {'Max Gradient': max_gradient}, 'train', epoch*len(train_loader) + i)
+
+    # log the learning rate
+    logger(writer, {'Learning Rate': optimizer.param_groups[0]['lr']}, 'train', epoch)
+    scheduler.step()
+
+    # NOTE: model maps all input to the same value
+    # print(x)
+    # print(x_hat)
+    # print(x.mean(), x_hat.mean())
+    # print(x.std(), x_hat.std())
+    # sys.exit()
+
+    loss_per_epoch = epoch_loss/len(train_loader)
+    print(f"Epoch {epoch}, training loss: {loss_per_epoch}")
+
+    # log the metrics
     if epoch % config.common.log_interval == 0:
-        print('logging')
-        # computed_metrics = metrics.compute_and_log_metrics(epoch_loss)
-        # logger(writer, computed_metrics, 'train', epoch)
-    # metrics.clear_metrics()
+        logger(writer, {'Loss': loss_per_epoch}, 'train', epoch)
 
 @torch.no_grad()
 def test(epoch, model, val_loader, config, writer):
     model.eval()
     epoch_loss = 0
+    all_codes = []
     for i, (x, y) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
         x = x.to(device)
-        x_hat = model(x)
-        # loss_l1 = loss_fn_l1(x, x_hat)
+        x_hat, codes = model(x)
+        loss_l1 = loss_fn_l1(x, x_hat)
         loss_l2 = loss_fn_l2(x, x_hat)
-        loss = loss_l2
+        loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2
         epoch_loss += loss.item()
 
-        # metrics.fill_metrics(y_pred, y, loss.item())
-    print(f"Epoch {epoch}, validation loss: {epoch_loss}")
-    if epoch % config.common.log_interval == 0:
-        print('logging')
-        # computed_metrics = metrics.compute_and_log_metrics(epoch_loss)
-        # logger(writer, computed_metrics, 'train', epoch)
-    # metrics.clear_metrics()
+        all_codes.append(codes)
 
+    all_codes = torch.cat(all_codes, dim=0)
+    # log the distribution of codes
+    writer.add_histogram('Codes', all_codes, epoch)
+
+    loss_per_epoch = epoch_loss/len(val_loader)
+    print(f"Epoch {epoch}, validation loss: {loss_per_epoch}")
+
+    # log the metrics
+    logger(writer, {'Loss': loss_per_epoch}, 'val', epoch)
 
 #Logger for tensorboard
 def logger(writer, metrics, phase, epoch_index):
@@ -93,7 +122,7 @@ def logger(writer, metrics, phase, epoch_index):
             raise Exception("Need to handle multiclass")
             # bp()
         writer.add_scalar("%s/%s"%(phase, key), value, epoch_index)
-    writer.flush()
+    # writer.flush()
 
 class ConfigNamespace:
     """Converts a dictionary into an object-like namespace for easy attribute access."""
@@ -104,17 +133,14 @@ class ConfigNamespace:
             setattr(self, key, value)
 
 # Load the YAML file and convert to ConfigNamespace
-def load_config(filepath, log_dir):
+def load_config(filepath):
     #make directory
-    os.makedirs(log_dir, exist_ok=True)
     with open(filepath, "r") as file:
         config_dict = yaml.safe_load(file)
-    with open(os.path.join(log_dir, 'config.yaml'), 'w') as file:
-        yaml.dump(config_dict, file)
     return ConfigNamespace(config_dict)
 
 def init_logger(log_dir):
-    # comment = f'feature_size_{feature_dim}_fc1_size_{fc1_size}_num_layers_{num_layers_vit}_num_heads_{num_heads}'                                                                                                                                                        
+    # comment = f'feature_size_{feature_dim}_fc1_size_{fc1_size}_num_layers_{num_layers_vit}_num_heads_{num_heads}'
     print(f'log_dir: {log_dir}')
     writer = SummaryWriter(log_dir=log_dir)
     return writer
@@ -149,35 +175,57 @@ def init_model(config):
     # )
 
     # log model, disc model parameters and train mode
-    print(model)
+    # print(model)
     # logger.info(disc_model)
     # logger.info(config)
     # logger.info(f"Encodec Model Parameters: {count_parameters(model)}")
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Total number of parameters: {total_params}")
-    if torch.cuda.device_count() > 1:
-        print(f"Using {torch.cuda.device_count()} GPUs")
-        model = nn.DataParallel(model)
-        model = model.to(device)
+    # if torch.cuda.device_count() > 1:
+    #     print(f"Using {torch.cuda.device_count()} GPUs")
+    #     model = nn.DataParallel(model)
+    #     model = model.to(device)
     return model
 
-if __name__ == "__main__":
+def set_args():
+    parser = argparse.ArgumentParser()
     
-    current_time = datetime.now().strftime('%m-%d_%H-%M')
-    log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/runs', f"{current_time}")
+    parser.add_argument("--exp_name", type=str, default="config")
+    
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+
+    args = set_args()
 
     # Load the YAML file
-    config = load_config("encodec/my_code/config.yaml", log_dir)
-    writer = init_logger(current_time)
+    config = load_config("encodec/params/%s.yaml" % args.exp_name)
+
+    log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', f"{config.exp_details.name}")
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+        
+    writer = init_logger(log_dir)
 
     device = torch.device("cuda")
     torch.manual_seed(config.common.seed)
 
+    data_parallel = config.distributed.data_parallel
+
     train_loader, val_loader = init_dataset(config)
     model = init_model(config)
     model = model.to(device)
+
+    if data_parallel:
+        model = nn.DataParallel(model)
+    
     optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), weight_decay=float(config.optimization.weight_decay))
+    # scheduler = WarmupCosineLrScheduler(optimizer, max_iter=config.common.max_epoch*len(trainloader), eta_ratio=0.1, warmup_iter=config.lr_scheduler.warmup_epoch*len(trainloader), warmup_ratio=1e-4)
+
+    # cosine annealing scheduler
+    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
 
     # instantiate loss balancer
     # balancer = Balancer(config.balancer.weights)
@@ -186,7 +234,7 @@ if __name__ == "__main__":
     test(0, model, val_loader, config, writer)
     for epoch in tqdm(range(1, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         # train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scaler_disc=None,writer=None,balancer=None):
-        train_one_step(epoch, optimizer, model, train_loader, config=config,writer=writer)
+        train_one_step(epoch, optimizer, scheduler, model, train_loader, config=config,writer=writer)
         if epoch % config.common.test_interval == 0:
             test(epoch,model,val_loader,config,writer)
         # save checkpoint and epoch

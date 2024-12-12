@@ -6,6 +6,7 @@
 
 """EnCodec model implementation."""
 
+import sys
 import math
 from pathlib import Path
 import typing as tp
@@ -149,23 +150,19 @@ class EncodecModel(nn.Module):
         duration = length / self.sample_rate
         assert self.segment is None or duration <= 1e-5 + self.segment
 
-        # if self.normalize:
-        #     x = x.clamp(-6, 6)
-        #     x = (x - x.mean()) / (1e-8 + x.std())
-        #     # mono = x.mean(dim=1, keepdim=True)
-        #     # volume = mono.pow(2).mean(dim=2, keepdim=True).sqrt()
-        #     # scale = 1e-8 + volume
-        #     # x = x / scale
-        #     # scale = scale.view(-1, 1)
-        #     scale = x.std()
-        # else:
-        #     scale = None
         scale = None
 
         emb = self.encoder(x)
         codes = self.quantizer.encode(emb, self.frame_rate, self.bandwidth)
         codes = codes.transpose(0, 1)
         # codes is [B, K, T], with T frames, K nb of codebooks.
+
+        # print(emb)
+        # print(codes)
+        # print(emb.shape)
+        # print(codes.shape)
+        # sys.exit()
+
         return codes, scale
 
     def decode(self, encoded_frames: tp.List[EncodedFrame]) -> torch.Tensor:
@@ -192,7 +189,10 @@ class EncodecModel(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         frames = self.encode(x)
-        return self.decode(frames)[:, :, :x.shape[-1]]
+        
+        # flatten the frames
+        codes = torch.cat([frame[0] for frame in frames], dim=-1)
+        return self.decode(frames)[:, :, :x.shape[-1]], codes
 
     def set_target_bandwidth(self, bandwidth: float):
         if bandwidth not in self.target_bandwidths:
@@ -223,13 +223,13 @@ class EncodecModel(nn.Module):
 
     @staticmethod
     def _get_model(target_bandwidths: tp.List[float],
-                   sample_rate: int = 24_000,
+                   sample_rate: int = 10,
                    channels: int = 1,
                    causal: bool = True,
                    model_norm: str = 'weight_norm',
                    audio_normalize: bool = False,
                    segment: tp.Optional[float] = None,
-                   name: str = 'unset',
+                   name: str = 'breathing_model',
                    ratios=[8, 5, 4, 2]):
         encoder = m.SEANetEncoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios)
         decoder = m.SEANetDecoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios)
@@ -237,7 +237,8 @@ class EncodecModel(nn.Module):
         quantizer = qt.ResidualVectorQuantizer(
             dimension=encoder.dimension,
             n_q=n_q,
-            bins=1024,
+            # bins=1024,
+            bins=256,
         )
         model = EncodecModel(
             encoder,
@@ -250,6 +251,7 @@ class EncodecModel(nn.Module):
             segment=segment,
             name=name,
         )
+
         return model
 
     @staticmethod
