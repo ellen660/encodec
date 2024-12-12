@@ -231,6 +231,12 @@ class EuclideanCodebook(nn.Module):
         embed_ind = self.quantize(x)
         # post-process
         embed_ind = self.postprocess_emb(embed_ind, shape)
+
+        # print(f'x shape: {x.shape}')
+        # print(f'x {x}')
+        # print(f'embed_ind shape: {embed_ind.shape}')
+        # print(f'embed_ind {embed_ind}')
+        # sys.exit()
         return embed_ind
 
     def decode(self, embed_ind):
@@ -301,7 +307,8 @@ class VectorQuantization(nn.Module):
         self.project_out = (nn.Linear(_codebook_dim, dim) if requires_projection else nn.Identity())
 
         self.epsilon = epsilon
-        self.commitment_weight = commitment_weight
+        # self.commitment_weight = commitment_weight
+        self.commitment_weight = 1.
 
         self._codebook = EuclideanCodebook(dim=_codebook_dim, codebook_size=codebook_size, kmeans_init=kmeans_init, kmeans_iters=kmeans_iters, decay=decay, epsilon=epsilon, threshold_ema_dead_code=threshold_ema_dead_code)
         self.codebook_size = codebook_size
@@ -332,6 +339,12 @@ class VectorQuantization(nn.Module):
         if self.training:
             quantize = x + (quantize - x).detach()
 
+        # print(f'quantize {quantize}')
+        # print(f'x {x}')
+        # print(f'self.commitment_weight {self.commitment_weight}')
+        # print(f'self.training {self.training}')
+        # sys.exit()
+        print(f'device {device}')
         loss = torch.tensor([0.0], device=device, requires_grad=self.training)
 
         if self.training:
@@ -339,8 +352,15 @@ class VectorQuantization(nn.Module):
                           'https://github.com/facebookresearch/encodec/issues/25 . '
                           'The bug wasn\'t fixed here for reproducibility.')
             if self.commitment_weight > 0:
+                # print(f'here {quantize}')
                 commit_loss = F.mse_loss(quantize.detach(), x)
                 loss = loss + commit_loss * self.commitment_weight
+                # print(f'loss device {loss.device}')
+                # sys.exit()
+                # print(f'commit_loss: {commit_loss}')
+                # print(f'quantize: {quantize}')
+                # print(f'x: {x}')
+                # sys.exit()
 
         quantize = self.project_out(quantize)
         quantize = rearrange(quantize, "b n d -> b d n")
@@ -375,6 +395,10 @@ class ResidualVectorQuantization(nn.Module):
             all_losses.append(loss)
 
         out_losses, out_indices = map(torch.stack, (all_losses, all_indices))
+        #convert to device
+        # print(f'out_losses device {out_losses.device}')
+        # sys.exit()
+        # out_losses = out_losses.to(x.device)
         return quantized_out, out_indices, out_losses
 
     def encode(self, x: torch.Tensor, n_q: tp.Optional[int] = None) -> torch.Tensor:
@@ -384,9 +408,9 @@ class ResidualVectorQuantization(nn.Module):
         for layer in self.layers[:n_q]:
             indices = layer.encode(residual)
             quantized = layer.decode(indices)
-            # print(indices)
-            # print(residual)
-            # print(quantized)
+            # print(f'indices, {indices}')
+            # print(f'residual {residual}')
+            # print(f'quantized {quantized}')
             residual = residual - quantized
             all_indices.append(indices)
         out_indices = torch.stack(all_indices)
