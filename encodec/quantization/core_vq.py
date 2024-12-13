@@ -178,6 +178,9 @@ class EuclideanCodebook(nn.Module):
     def quantize(self, x):
         embed = self.embed.t()
 
+        # print(f'x shape: {x.shape}')
+        # sys.exit()
+
         # plot the distribution of the embeddings and x
         # move to cpu
         # plt.hist(x.cpu().detach().numpy().flatten(), bins=100, alpha=0.5, label='x', density=True)
@@ -339,12 +342,6 @@ class VectorQuantization(nn.Module):
         if self.training:
             quantize = x + (quantize - x).detach()
 
-        # print(f'quantize {quantize}')
-        # print(f'x {x}')
-        # print(f'self.commitment_weight {self.commitment_weight}')
-        # print(f'self.training {self.training}')
-        # sys.exit()
-        print(f'device {device}')
         loss = torch.tensor([0.0], device=device, requires_grad=self.training)
 
         if self.training:
@@ -352,15 +349,8 @@ class VectorQuantization(nn.Module):
                           'https://github.com/facebookresearch/encodec/issues/25 . '
                           'The bug wasn\'t fixed here for reproducibility.')
             if self.commitment_weight > 0:
-                # print(f'here {quantize}')
                 commit_loss = F.mse_loss(quantize.detach(), x)
                 loss = loss + commit_loss * self.commitment_weight
-                # print(f'loss device {loss.device}')
-                # sys.exit()
-                # print(f'commit_loss: {commit_loss}')
-                # print(f'quantize: {quantize}')
-                # print(f'x: {x}')
-                # sys.exit()
 
         quantize = self.project_out(quantize)
         quantize = rearrange(quantize, "b n d -> b d n")
@@ -395,10 +385,6 @@ class ResidualVectorQuantization(nn.Module):
             all_losses.append(loss)
 
         out_losses, out_indices = map(torch.stack, (all_losses, all_indices))
-        #convert to device
-        # print(f'out_losses device {out_losses.device}')
-        # sys.exit()
-        # out_losses = out_losses.to(x.device)
         return quantized_out, out_indices, out_losses
 
     def encode(self, x: torch.Tensor, n_q: tp.Optional[int] = None) -> torch.Tensor:
