@@ -1,7 +1,7 @@
 exp_details:
   name: '091224_l1'
   description: '4 hours at 10 hz'
-  date: '2024-12-13'
+  date: '2024-12-14'
 
 common:
   save_interval: 2
@@ -15,7 +15,7 @@ dataset:
   batch_size: 8
   max_length: 144000 # 4 hours at 10 hz
   num_workers: 10
-  debug: True
+  debug: False
 
 checkpoint:
   resume: False
@@ -34,6 +34,8 @@ loss:
   weight_l2: 0.
   weight_commit: 0.25
   weight_freq: 0.25
+  weight_g: 3.
+  weight_feat: 3.
 
 lr_scheduler:
   warmup_epoch: 10
@@ -42,15 +44,15 @@ model:
   target_bandwidths: [0.1] #0.1 is 10 codebooks, 0.2 is 20 codebooks
   sample_rate: 10
   channels: 1
-  # train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
+  train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
   audio_normalize: True
   filters: 32
   # ratios: [8, 5, 4, 2] #320 downsampling 
-  ratios: [5, 2, 1, 1] # 10 downsampling
-  # disc_win_lengths: [1024, 2048, 512]
-  # disc_hop_lengths: [256, 512, 128]
-  # disc_n_ffts: [1024, 2048, 512]
-  causal: False
+  ratios: [5, 5, 2, 1] # 10 downsampling
+  disc_win_lengths: [64, 128, 32]
+  disc_hop_lengths: [10, 16, 5]
+  disc_n_ffts: [64, 128, 32]
+  causal: True
   # norm: 'weight_norm'
   norm: 'layer_norm'
   segment: None

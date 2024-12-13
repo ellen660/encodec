@@ -13,8 +13,7 @@ import torch
 from torch import nn
 from einops import rearrange
 
-from .modules import NormConv2d
-
+from modules import NormConv2d
 
 FeatureMapType = tp.List[torch.Tensor]
 LogitsType = torch.Tensor
@@ -44,7 +43,7 @@ class DiscriminatorSTFT(nn.Module):
         growth (int): Growth factor for the filters. Default: 1
     """
     def __init__(self, filters: int, in_channels: int = 1, out_channels: int = 1,
-                 n_fft: int = 1024, hop_length: int = 256, win_length: int = 1024, max_filters: int = 1024,
+                 n_fft: int = 64, hop_length: int = 10, win_length: int = 64, max_filters: int = 1024,
                  filters_scale: int = 1, kernel_size: tp.Tuple[int, int] = (3, 9), dilations: tp.List = [1, 2, 4],
                  stride: tp.Tuple[int, int] = (1, 2), normalized: bool = True, norm: str = 'weight_norm',
                  activation: str = 'LeakyReLU', activation_params: dict = {'negative_slope': 0.2}):
@@ -108,8 +107,8 @@ class MultiScaleSTFTDiscriminator(nn.Module):
         **kwargs: additional args for STFTDiscriminator
     """
     def __init__(self, filters: int, in_channels: int = 1, out_channels: int = 1,
-                 n_ffts: tp.List[int] = [1024, 2048, 512], hop_lengths: tp.List[int] = [256, 512, 128],
-                 win_lengths: tp.List[int] = [1024, 2048, 512], **kwargs):
+                 n_ffts: tp.List[int] = [64, 128, 32], hop_lengths: tp.List[int] = [10, 16, 5],
+                 win_lengths: tp.List[int] = [64, 128, 32], **kwargs):
         super().__init__()
         assert len(n_ffts) == len(hop_lengths) == len(win_lengths)
         self.discriminators = nn.ModuleList([
@@ -131,17 +130,17 @@ class MultiScaleSTFTDiscriminator(nn.Module):
 
 def test():
     disc = MultiScaleSTFTDiscriminator(filters=32)
-    y = torch.randn(1, 1, 24000)
-    y_hat = torch.randn(1, 1, 24000)
+    y = torch.randn(1, 1, 144000)
+    y_hat = torch.randn(1, 1, 144000)
 
     y_disc_r, fmap_r = disc(y)
     y_disc_gen, fmap_gen = disc(y_hat)
+    # breakpoint()
     assert len(y_disc_r) == len(y_disc_gen) == len(fmap_r) == len(fmap_gen) == disc.num_discriminators
 
     assert all([len(fm) == 5 for fm in fmap_r + fmap_gen])
     assert all([list(f.shape)[:2] == [1, 32] for fm in fmap_r + fmap_gen for f in fm])
     assert all([len(logits.shape) == 4 for logits in y_disc_r + y_disc_gen])
-
 
 if __name__ == '__main__':
     test()
