@@ -2,7 +2,7 @@ from model import EncodecModel
 from my_code.dataset import BreathingDataset
 from my_code.losses import loss_fn_l1, loss_fn_l2
 from my_code.schedulers import LinearWarmupCosineAnnealingLR
-# from msstftd import MultiScaleSTFTDiscriminator
+from msstftd import MultiScaleSTFTDiscriminator
 # from scheduler import WarmupCosineLrScheduler
 # from utils import (save_master_checkpoint, set_seed,
 #                    start_dist_train)
@@ -23,8 +23,9 @@ from tqdm import tqdm
 import argparse
 
 import sys
+from my_code.spectrogram_loss import BreathingSpectrogram, ReconstructionLoss
 
-def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,scaler=None,scaler_disc=None,writer=None,balancer=None):
+def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,freq_loss, scaler=None,scaler_disc=None,writer=None,balancer=None):
     """train one step function
 
     Args:
@@ -47,8 +48,9 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,scale
         x_hat, codes, commit_loss = model(x)
         loss_l1 = loss_fn_l1(x, x_hat)
         loss_l2 = loss_fn_l2(x, x_hat)
-        print(f'commitment loss: {commit_loss}')
-        loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * commit_loss
+        loss_f = freq_loss(x, x_hat)
+        # print(f'loss_f: {loss_f}')
+        loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * torch.mean(commit_loss) + config.loss.weight_freq * loss_f 
 
         epoch_loss += loss.item()
         optimizer.zero_grad()
@@ -57,6 +59,10 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,scale
 
         # add the loss to the tensorboard
         logger(writer, {'Loss per step': loss.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss Frequency': loss_f.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss L1': loss_l1.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss commit_loss': torch.mean(commit_loss).item()}, 'train', epoch*len(train_loader) + i)
+        # logger(writer, {'Loss L2': loss_l2.item()}, 'train', epoch*len(train_loader) + i)
 
         max_gradient = torch.tensor(0.0).to(device)
         for param in model.parameters():
@@ -85,7 +91,7 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,scale
         logger(writer, {'Loss': loss_per_epoch}, 'train', epoch)
 
 @torch.no_grad()
-def test(epoch, model, val_loader, config, writer):
+def test(epoch, model, val_loader, config, writer, freq_loss):
     model.eval()
     epoch_loss = 0
     all_codes = []
@@ -94,10 +100,16 @@ def test(epoch, model, val_loader, config, writer):
         x_hat, codes, commit_loss = model(x)
         loss_l1 = loss_fn_l1(x, x_hat)
         loss_l2 = loss_fn_l2(x, x_hat)
-        loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * commit_loss
+        loss_f = freq_loss(x, x_hat)
+        # print(f'loss_f: {loss_f}')
+        loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * torch.mean(commit_loss) + config.loss.weight_freq * loss_f
         epoch_loss += loss.item()
 
         all_codes.append(codes)
+        logger(writer, {'Loss per step': loss.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss Frequency': loss_f.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss L1': loss_l1.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss commit_loss': torch.mean(commit_loss).item()}, 'train', epoch*len(train_loader) + i)
 
     all_codes = torch.cat(all_codes, dim=0)
     # log the distribution of codes
@@ -231,16 +243,19 @@ if __name__ == "__main__":
     # cosine annealing scheduler
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
 
+    #Reconstruction loss
+    freq_loss = ReconstructionLoss(sampling_rate=10, n_fft=64, device=device)
+
     # instantiate loss balancer
     # balancer = Balancer(config.balancer.weights)
     # if balancer:
     #     print(f'Loss balancer with weights {balancer.weights} instantiated')
-    # test(0, model, val_loader, config, writer)
+    # test(0, model, val_loader, config, writer, freq_loss=freq_loss)
     for epoch in tqdm(range(1, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         # train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scaler_disc=None,writer=None,balancer=None):
-        train_one_step(epoch, optimizer, scheduler, model, train_loader, config=config,writer=writer)
+        train_one_step(epoch, optimizer, scheduler, model, train_loader, config=config,writer=writer, freq_loss=freq_loss)
         if epoch % config.common.test_interval == 0:
-            test(epoch,model,val_loader,config,writer)
+            test(epoch,model,val_loader,config,writer, freq_loss=freq_loss)
         # save checkpoint and epoch
         # if epoch % config.common.save_interval == 0:
         #     model_to_save = model.module if config.distributed.data_parallel else model

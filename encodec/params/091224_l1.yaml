@@ -1,26 +1,21 @@
 exp_details:
   name: '091224_l1'
   description: '4 hours at 10 hz'
-  date: '2021-09-12'
+  date: '2024-12-13'
 
 common:
   save_interval: 2
   test_interval: 5
-<<<<<<< HEAD:encodec/my_code/config.yaml
-  log_interval: 5
-  max_epoch: 75
-=======
   log_interval: 1
-  max_epoch: 300
->>>>>>> bca7ccc49481794913eebfe5594d3f69e2a691b8:encodec/params/091224_l1.yaml
+  max_epoch: 100
   seed: 42
   # amp: False
 
 dataset:
-  batch_size: 48
+  batch_size: 8
   max_length: 144000 # 4 hours at 10 hz
   num_workers: 10
-  debug: False
+  debug: True
 
 checkpoint:
   resume: False
@@ -37,12 +32,14 @@ optimization:
 loss:
   weight_l1: 1.
   weight_l2: 0.
+  weight_commit: 0.25
+  weight_freq: 0.25
 
 lr_scheduler:
-  warmup_epoch: 30
+  warmup_epoch: 10
 
 model:
-  target_bandwidths: [0.1]
+  target_bandwidths: [0.1] #0.1 is 10 codebooks, 0.2 is 20 codebooks
   sample_rate: 10
   channels: 1
   # train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
