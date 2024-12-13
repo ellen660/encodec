@@ -12,7 +12,7 @@ common:
   # amp: False
 
 dataset:
-  batch_size: 4
+  batch_size: 8
   max_length: 144000 # 4 hours at 10 hz
   num_workers: 10
   debug: True
@@ -30,8 +30,9 @@ optimization:
   # disc_lr: 3e-4
 
 loss:
-  weight_l1: 0.
-  weight_l2: 1.
+  weight_l1: 1.
+  weight_l2: 0.
+  weight_commit: 1.
 
 lr_scheduler:
   warmup_epoch: 30
@@ -49,6 +50,7 @@ model:
   disc_hop_lengths: [256, 512, 128]
   disc_n_ffts: [1024, 2048, 512]
   causal: False
+  # norm: 'weight_norm'
   norm: 'layer_norm'
   segment: None
   name: 'my_encodec'

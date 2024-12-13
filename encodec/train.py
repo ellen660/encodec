@@ -64,6 +64,11 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,freq_
         logger(writer, {'Loss commit_loss': torch.mean(commit_loss).item()}, 'train', epoch*len(train_loader) + i)
         # logger(writer, {'Loss L2': loss_l2.item()}, 'train', epoch*len(train_loader) + i)
 
+        # log all the losses
+        logger(writer, {'L1 Loss': loss_l1.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'L2 Loss': loss_l2.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Commitment Loss': commit_loss.item()}, 'train', epoch*len(train_loader) + i)
+
         max_gradient = torch.tensor(0.0).to(device)
         for param in model.parameters():
             if param.grad is not None:
@@ -218,8 +223,8 @@ if __name__ == "__main__":
     # Load the YAML file
     config = load_config("encodec/params/%s.yaml" % args.exp_name)
 
-    # log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', f"{config.exp_details.name}")
-    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{config.exp_details.date}'
+    log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', f"{config.exp_details.name}")
+    # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{config.exp_details.date}'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
         
