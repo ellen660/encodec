@@ -147,32 +147,15 @@ class EncodecModel(nn.Module):
             stride = self.segment_stride  # type: ignore
             assert stride is not None
         # print(f'segment_length: {segment_length}')
-<<<<<<< HEAD
         # sys.exit()
 
-=======
->>>>>>> 314fdc6dd1281844a09da38d5596cda382570161
         encoded_frames: tp.List[EncodedFrame] = []
-        commit_loss = []
         for offset in range(0, length, stride):
             frame = x[:, :, offset: offset + segment_length]
-<<<<<<< HEAD
             encoded_frames.append(self._encode_frame(frame))
         # print(f'{encoded_frames[0][0].device}')
         # sys.exit()
         return encoded_frames
-=======
-            # encoded_frames.append(self._encode_frame(frame))
-
-            codes, loss = self._encode_frame(frame)
-            encoded_frames.append(codes)
-            commit_loss.append(loss)
-
-        # sum the commit loss
-        commit_loss = torch.sum(torch.stack(commit_loss))
-
-        return encoded_frames, commit_loss
->>>>>>> 314fdc6dd1281844a09da38d5596cda382570161
 
     def _encode_frame(self, x: torch.Tensor) -> EncodedFrame:
         length = x.shape[-1]
@@ -195,11 +178,7 @@ class EncodecModel(nn.Module):
         # print(codes.shape)
         # sys.exit()
 
-<<<<<<< HEAD
         return codes, torch.sum(quantized_result.commit_loss), scale
-=======
-        return (codes, scale), torch.sum(quantized_result.commit_loss)
->>>>>>> 314fdc6dd1281844a09da38d5596cda382570161
 
     def decode(self, encoded_frames: tp.List[EncodedFrame]) -> torch.Tensor:
         """Decode the given frames into a waveform.
@@ -224,7 +203,6 @@ class EncodecModel(nn.Module):
         return out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-<<<<<<< HEAD
         frames = self.encode(x)
 
         # flatten the frames
@@ -235,17 +213,6 @@ class EncodecModel(nn.Module):
         # print(f'codes: {codes.shape}')
         # print(f'commit: {commit_loss.shape}')
         # sys.exit()
-=======
-        # frames = self.encode(x)
-        # print(f'frames: {frames}')
-        # print([frame[1] for frame in frames])
-        # print(f'num frames: {len(frames)}')
-        # print(f'segment_length: {self.segment}')
-        frames, commit_loss = self.encode(x)
-        
-        # flatten the frames
-        codes = torch.cat([frame[0] for frame in frames], dim=-1)
->>>>>>> 314fdc6dd1281844a09da38d5596cda382570161
 
         return self.decode(frames)[:, :, :x.shape[-1]], codes, commit_loss
 
