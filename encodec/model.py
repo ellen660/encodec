@@ -179,6 +179,28 @@ class EncodecModel(nn.Module):
         # sys.exit()
 
         return codes, torch.sum(quantized_result.commit_loss), scale
+    # def _encode_frame(self, x: torch.Tensor) -> EncodedFrame:
+    #     length = x.shape[-1]
+    #     duration = length / self.sample_rate
+    #     assert self.segment is None or duration <= 1e-5 + self.segment
+
+    #     if self.normalize:
+    #         mono = x.mean(dim=1, keepdim=True)
+    #         volume = mono.pow(2).mean(dim=2, keepdim=True).sqrt()
+    #         scale = 1e-8 + volume
+    #         x = x / scale
+    #         scale = scale.view(-1, 1)
+    #     else:
+    #         scale = None
+    #     emb = self.encoder(x)
+
+    #     if self.training:# or True:
+    #         return emb, scale
+
+    #     codes = self.quantizer.encode(emb, self.frame_rate, self.bandwidth)
+    #     codes = codes.transpose(0, 1)
+    #     # codes is [B, K, T], with T frames, K nb of codebooks.
+    #     return codes, scale
 
     def decode(self, encoded_frames: tp.List[EncodedFrame]) -> torch.Tensor:
         """Decode the given frames into a waveform.

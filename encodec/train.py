@@ -165,12 +165,12 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * torch.mean(commit_loss) + config.loss.weight_freq * loss_f
         loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
         epoch_loss += loss.item()
+        epoch_loss += loss_disc.item()
 
         all_codes.append(codes)
         logger(writer, {'Loss per step': loss.item()}, 'val', epoch*len(val_loader) + i)
         logger(writer, {'Loss Frequency': loss_f.item()}, 'val', epoch*len(val_loader) + i)
         logger(writer, {'Loss L1': loss_l1.item()}, 'val', epoch*len(val_loader) + i)
-        logger(writer, {'Loss commit_loss': torch.mean(commit_loss).item()}, 'val', epoch*len(val_loader) + i)
         logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'val', epoch*len(val_loader) + i)
         logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'val', epoch*len(val_loader) + i)
         logger(writer, {'Loss Discriminator': loss_disc.item()}, 'val', epoch*len(val_loader) + i)
@@ -183,8 +183,8 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
     if epoch == 0:
         x = x[0].cpu().numpy().squeeze()
         fig, ax = plt.subplots()
-        time = np.arange(0, 2400)
-        ax.plot(time, x[:2400])
+        time = np.arange(0, 1200)
+        ax.plot(time, x[10000:11200])
         ax.set_title("Signal Graph")
         ax.set_xlabel("Time")
         ax.set_ylabel("Amplitude")
@@ -195,8 +195,8 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
 
     fig, ax = plt.subplots()
     x_hat = x_hat[0].cpu().numpy().squeeze()
-    time = np.arange(0, 2400)
-    ax.plot(time, x_hat[:2400])
+    time = np.arange(0, 1200)
+    ax.plot(time, x_hat[10000:11200])
     ax.set_title("Signal Graph")
     ax.set_xlabel("Time")
     ax.set_ylabel("Amplitude")

@@ -97,6 +97,7 @@ class SEANetEncoder(nn.Module):
         super().__init__()
         self.channels = channels
         self.dimension = dimension
+        # assert self.dimension == 32
         self.n_filters = n_filters
         self.ratios = list(reversed(ratios))
         del ratios
@@ -180,7 +181,31 @@ class SEANetDecoder(nn.Module):
                  pad_mode: str = 'reflect', true_skip: bool = False, compress: int = 2, lstm: int = 2,
                  trim_right_ratio: float = 1.0):
         super().__init__()
+
+        print(f'channels: {channels}')
+        print(f'dimension: {dimension}')
+        print(f'n_filters: {n_filters}')
+        print(f'n_residual_layers: {n_residual_layers}')
+        print(f'ratios: {ratios}')
+        print(f'activation: {activation}')
+        print(f'activation_params: {activation_params}')
+        print(f'final_activation: {final_activation}')
+        print(f'final_activation_params: {final_activation_params}')
+        print(f'norm: {norm}')
+        print(f'norm_params: {norm_params}')
+        print(f'kernel_size: {kernel_size}')
+        print(f'last_kernel_size: {last_kernel_size}')
+        print(f'residual_kernel_size: {residual_kernel_size}')
+        print(f'dilation_base: {dilation_base}')
+        print(f'causal: {causal}')
+        print(f'pad_mode: {pad_mode}')
+        print(f'true_skip: {true_skip}')
+        print(f'compress: {compress}')
+        print(f'lstm: {lstm}')
+        print(f'trim_right_ratio: {trim_right_ratio}')
+        # sys.exit()
         self.dimension = dimension
+        # assert self.dimension == 32
         self.channels = channels
         self.n_filters = n_filters
         self.ratios = ratios
@@ -222,7 +247,7 @@ class SEANetDecoder(nn.Module):
         # Add final layers
         model += [
             act(**activation_params),
-            SConv1d(n_filters, channels, last_kernel_size, norm=norm, norm_kwargs=norm_params,
+            SConv1d(n_filters, channels, last_kernel_size, norm='none', norm_kwargs=norm_params,
                     causal=causal, pad_mode=pad_mode)
         ]
         # Add optional final activation to decoder (eg. tanh)
@@ -233,6 +258,9 @@ class SEANetDecoder(nn.Module):
                 final_act(**final_activation_params)
             ]
         self.model = nn.Sequential(*model)
+
+        # print(self.model)
+        # sys.exit()
 
     def forward(self, z):
         y = self.model(z)
