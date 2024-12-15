@@ -162,7 +162,14 @@ class EncodecModel(nn.Module):
         duration = length / self.sample_rate
         assert self.segment is None or duration <= 1e-5 + self.segment
 
-        scale = None
+        if self.normalize:
+            mono = x.mean(dim=1, keepdim=True)
+            volume = mono.pow(2).mean(dim=2, keepdim=True).sqrt()
+            scale = 1e-8 + volume
+            x = x / scale
+            scale = scale.view(-1, 1)
+        else:
+            scale = None
 
         emb = self.encoder(x)
         # codes = self.quantizer.encode(emb, self.frame_rate, self.bandwidth)
@@ -170,15 +177,14 @@ class EncodecModel(nn.Module):
         codes = quantized_result.codes.transpose(0, 1)
         # codes is [B, K, T], with T frames, K nb of codebooks.
 
-        # print(f'self.bandwidth: {self.bandwidth}') #None
-        # print(f'self.frame_rate: {self.frame_rate}') #1
-        # print(emb) 
-        # print(codes)
-        # print(emb.shape)
-        # print(codes.shape)
-        # sys.exit()
+        encoded_frame = {
+            'codes': codes,
+            'commit_loss': quantized_result.commit_loss,
+            'scale': scale,
+        }
 
-        return codes, torch.sum(quantized_result.commit_loss), scale
+        # return codes, torch.sum(quantized_result.commit_loss), scale
+        return encoded_frame
 
     def decode(self, encoded_frames: tp.List[EncodedFrame]) -> torch.Tensor:
         """Decode the given frames into a waveform.
@@ -189,15 +195,34 @@ class EncodecModel(nn.Module):
         if segment_length is None:
             assert len(encoded_frames) == 1
             return self._decode_frame(encoded_frames[0])
+        
+        # print("Number of frames to decode", len(encoded_frames))
 
-        frames = [self._decode_frame(frame) for frame in encoded_frames]
-        return _linear_overlap_add(frames, self.segment_stride or 1)
+        frames = [self._decode_frame(frame["codes"]) for frame in encoded_frames]
+
+        # print("Frames")
+        # print(frames)
+
+        new_frames = _linear_overlap_add(frames, self.segment_stride or 1)
+
+        # print("New frames")
+        # print(new_frames)
+        # sys.exit()
+
+        return new_frames
 
     def _decode_frame(self, encoded_frame: EncodedFrame) -> torch.Tensor:
-        codes, commit_loss, scale = encoded_frame
+        codes = encoded_frame['codes']
+        scale = encoded_frame['scale']
         codes = codes.transpose(0, 1)
         emb = self.quantizer.decode(codes)
+        # print("emb", emb)
+        # print("emb shape", emb.shape)
         out = self.decoder(emb)
+        # print("out", out)
+        # print("out shape", out.shape)
+
+        # sys.exit()
         if scale is not None:
             out = out * scale.view(-1, 1, 1)
         return out
@@ -206,13 +231,8 @@ class EncodecModel(nn.Module):
         frames = self.encode(x)
 
         # flatten the frames
-        codes = torch.cat([frame[0] for frame in frames], dim=-1)
-        commit_loss = frames[0][1]
-        commit_loss = commit_loss.unsqueeze(0)  # Adds a batch dimension
-
-        # print(f'codes: {codes.shape}')
-        # print(f'commit: {commit_loss.shape}')
-        # sys.exit()
+        codes = torch.cat([frame['codes'] for frame in frames], dim=-1)
+        commit_loss = torch.cat([frame['commit_loss'] for frame in frames], dim=-1)
 
         return self.decode(frames)[:, :, :x.shape[-1]], codes, commit_loss
 
@@ -262,9 +282,7 @@ class EncodecModel(nn.Module):
             # bins=1024,
             bins=256,
         )
-        # print(f'n_q: {n_q}')
-        # print(f'dimension: {encoder.dimension}')
-        # print(f'bins: {quantizer.bins}')
+
         model = EncodecModel(
             encoder,
             decoder,

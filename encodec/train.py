@@ -25,6 +25,8 @@ import argparse
 import sys
 from my_code.spectrogram_loss import BreathingSpectrogram, ReconstructionLoss
 
+import matplotlib.pyplot as plt
+
 def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,freq_loss, scaler=None,scaler_disc=None,writer=None,balancer=None):
     """train one step function
 
@@ -46,11 +48,17 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,freq_
         # print(f'x shape: {x.shape}')
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
+        commit_loss = torch.mean(commit_loss)
         loss_l1 = loss_fn_l1(x, x_hat)
         loss_l2 = loss_fn_l2(x, x_hat)
-        loss_f = freq_loss(x, x_hat)
-        # print(f'loss_f: {loss_f}')
-        loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * torch.mean(commit_loss) + config.loss.weight_freq * loss_f 
+        freq_loss_dict = freq_loss(x, x_hat)
+
+        loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
+        loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
+        acc = freq_loss_dict["acc"] * config.loss.weight_freq
+        loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
+
+        loss = loss_l1 + loss_l2 + commit_loss + loss_f
 
         epoch_loss += loss.item()
         optimizer.zero_grad()
@@ -61,13 +69,11 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,freq_
         logger(writer, {'Loss per step': loss.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Loss Frequency': loss_f.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Loss L1': loss_l1.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss L2': loss_l2.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Loss commit_loss': torch.mean(commit_loss).item()}, 'train', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss L2': loss_l2.item()}, 'train', epoch*len(train_loader) + i)
-
-        # log all the losses
-        logger(writer, {'L1 Loss': loss_l1.item()}, 'train', epoch*len(train_loader) + i)
-        logger(writer, {'L2 Loss': loss_l2.item()}, 'train', epoch*len(train_loader) + i)
-        logger(writer, {'Commitment Loss': commit_loss.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Frequency Accuracy': acc.item()}, 'train', epoch*len(train_loader) + i)
 
         max_gradient = torch.tensor(0.0).to(device)
         for param in model.parameters():
@@ -80,13 +86,6 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,freq_
     # log the learning rate
     logger(writer, {'Learning Rate': optimizer.param_groups[0]['lr']}, 'train', epoch)
     scheduler.step()
-
-    # NOTE: model maps all input to the same value
-    # print(x)
-    # print(x_hat)
-    # print(x.mean(), x_hat.mean())
-    # print(x.std(), x_hat.std())
-    # sys.exit()
 
     loss_per_epoch = epoch_loss/len(train_loader)
     print(f"Epoch {epoch}, training loss: {loss_per_epoch}")
@@ -103,22 +102,62 @@ def test(epoch, model, val_loader, config, writer, freq_loss):
     for i, (x, y) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
+        commit_loss = torch.mean(commit_loss)
         loss_l1 = loss_fn_l1(x, x_hat)
         loss_l2 = loss_fn_l2(x, x_hat)
-        loss_f = freq_loss(x, x_hat)
-        # print(f'loss_f: {loss_f}')
-        loss = config.loss.weight_l1 * loss_l1 + config.loss.weight_l2 * loss_l2 + config.loss.weight_commit * torch.mean(commit_loss) + config.loss.weight_freq * loss_f
+        freq_loss_dict = freq_loss(x, x_hat)
+
+        loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
+        loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
+        acc = freq_loss_dict["acc"] * config.loss.weight_freq
+        loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
+        
+        loss = loss_l1 + loss_l2 + commit_loss + loss_f
+
         epoch_loss += loss.item()
 
         all_codes.append(codes)
-        logger(writer, {'Loss per step': loss.item()}, 'train', epoch*len(train_loader) + i)
-        logger(writer, {'Loss Frequency': loss_f.item()}, 'train', epoch*len(train_loader) + i)
-        logger(writer, {'Loss L1': loss_l1.item()}, 'train', epoch*len(train_loader) + i)
-        logger(writer, {'Loss commit_loss': torch.mean(commit_loss).item()}, 'train', epoch*len(train_loader) + i)
+        logger(writer, {'Loss per step': loss.item()}, 'val', epoch*len(train_loader) + i)
+        logger(writer, {'Loss Frequency': loss_f.item()}, 'val', epoch*len(train_loader) + i)
+        logger(writer, {'Loss L1': loss_l1.item()}, 'val', epoch*len(train_loader) + i)
+        logger(writer, {'Loss L2': loss_l2.item()}, 'val', epoch*len(train_loader) + i)
+        logger(writer, {'Loss commit_loss': torch.mean(commit_loss).item()}, 'val', epoch*len(train_loader) + i)
+        logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'val', epoch*len(train_loader) + i)
+        logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'val', epoch*len(train_loader) + i)
+        logger(writer, {'Frequency Accuracy': acc.item()}, 'val', epoch*len(train_loader) + i)
 
-    all_codes = torch.cat(all_codes, dim=0)
-    # log the distribution of codes
-    writer.add_histogram('Codes', all_codes, epoch)
+        if i == 0:
+            S_x = freq_loss_dict["S_x"]
+            S_x_hat = freq_loss_dict["S_x_hat"]
+
+            # plot x and the reconstructed x
+            fig, axs = plt.subplots(4, 1, figsize=(20, 10))
+
+            axs[0].plot(x[0].cpu().numpy().squeeze())
+            axs[0].set_title('Original')
+            axs[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto')
+            axs[1].invert_yaxis()
+            axs[1].set_title('Original Spectrogram')
+
+            axs[2].plot(x_hat[0].cpu().numpy().squeeze())
+            axs[2].set_title('Reconstructed')
+            axs[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto')
+            axs[3].invert_yaxis()
+            axs[3].set_title('Reconstructed Spectrogram')
+
+            fig.tight_layout()
+            fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
+            plt.close(fig)
+
+    all_codes = torch.cat(all_codes, dim=0) # B, num_codebooks, T
+    all_codes = torch.permute(all_codes, (1, 0, 2))
+
+    # flatten the last two dimensions
+    all_codes = all_codes.reshape(all_codes.shape[0], -1)
+
+    # log the distribution of codes. one distribution for each codebook
+    for i in range(all_codes.shape[0]):
+        writer.add_histogram(f'Codes/Codebook {i}', all_codes[i], epoch)
 
     loss_per_epoch = epoch_loss/len(val_loader)
     print(f"Epoch {epoch}, validation loss: {loss_per_epoch}")
@@ -249,13 +288,13 @@ if __name__ == "__main__":
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
 
     #Reconstruction loss
-    freq_loss = ReconstructionLoss(sampling_rate=10, n_fft=64, device=device)
+    freq_loss = ReconstructionLoss(sampling_rate=10, n_fft=256, device=device)
 
     # instantiate loss balancer
     # balancer = Balancer(config.balancer.weights)
     # if balancer:
     #     print(f'Loss balancer with weights {balancer.weights} instantiated')
-    # test(0, model, val_loader, config, writer, freq_loss=freq_loss)
+    test(0, model, val_loader, config, writer, freq_loss=freq_loss)
     for epoch in tqdm(range(1, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         # train_one_step(epoch,optimizer, model, train_loader,config,scaler=None,scaler_disc=None,writer=None,balancer=None):
         train_one_step(epoch, optimizer, scheduler, model, train_loader, config=config,writer=writer, freq_loss=freq_loss)

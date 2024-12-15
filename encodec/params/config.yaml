@@ -1,7 +1,7 @@
 exp_details:
   name: 'config'
   description: '4 hours at 10 hz'
-  date: '2024-12-12'
+  date: '2024-12-13'
 
 common:
   save_interval: 2
@@ -12,9 +12,9 @@ common:
   # amp: False
 
 dataset:
-  batch_size: 8
+  batch_size: 4
   max_length: 144000 # 4 hours at 10 hz
-  num_workers: 10
+  num_workers: 4
   debug: True
 
 checkpoint:
@@ -32,26 +32,27 @@ optimization:
 loss:
   weight_l1: 1.
   weight_l2: 0.
-  weight_commit: 1.
+  weight_commit: 0
+  weight_freq: 5
 
 lr_scheduler:
-  warmup_epoch: 30
+  warmup_epoch: 10
 
 model:
-  target_bandwidths: [0.1]
+  target_bandwidths: [0.05] #0.1 is 10 codebooks, 0.2 is 20 codebooks
   sample_rate: 10
   channels: 1
   # train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
-  audio_normalize: True
+  audio_normalize: False
   filters: 32
   # ratios: [8, 5, 4, 2] #320 downsampling 
-  ratios: [5, 5, 2, 1] # 50 downsample 5 seconds 
-  disc_win_lengths: [1024, 2048, 512]
-  disc_hop_lengths: [256, 512, 128]
-  disc_n_ffts: [1024, 2048, 512]
+  ratios: [5, 5, 2, 1] # 10 downsampling
+  # disc_win_lengths: [1024, 2048, 512]
+  # disc_hop_lengths: [256, 512, 128]
+  # disc_n_ffts: [1024, 2048, 512]
   causal: False
-  # norm: 'weight_norm'
-  norm: 'layer_norm'
+  norm: 'weight_norm'
+  # norm: 'layer_norm'
   segment: None
   name: 'my_encodec'
 

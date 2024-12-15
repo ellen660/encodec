@@ -1,15 +1,18 @@
 import torch
 # from audio_to_mel import Audio2Mel
+from torch.nn import functional as F
 
 # https://github.com/ZhikangNiu/encodec-pytorch/blob/main/losses.py
 
 def loss_fn_l1(input, output):
-    l1Loss = torch.nn.L1Loss(reduction='mean')
-    return l1Loss(input, output)
+    # l1Loss = torch.nn.L1Loss(reduction='mean')
+    # return l1Loss(input, output)
+    return F.l1_loss(input, output, reduction='mean')
 
 def loss_fn_l2(input, output):
-    l2Loss = torch.nn.MSELoss(reduction='mean')
-    return l2Loss(input, output)
+    # l2Loss = torch.nn.MSELoss(reduction='mean')
+    # return l2Loss(input, output)
+    return F.mse_loss(input, output, reduction='mean')
 
 # def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_rate=24000):
 def total_loss(input, output, sample_rate=10):

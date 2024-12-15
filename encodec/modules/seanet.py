@@ -222,8 +222,8 @@ class SEANetDecoder(nn.Module):
         # Add final layers
         model += [
             act(**activation_params),
-            SConv1d(n_filters, channels, last_kernel_size, norm=norm, norm_kwargs=norm_params,
-                    causal=causal, pad_mode=pad_mode)
+            # SConv1d(n_filters, channels, last_kernel_size, norm=norm, norm_kwargs=norm_params, causal=causal, pad_mode=pad_mode)
+            SConv1d(n_filters, channels, last_kernel_size, causal=causal, pad_mode=pad_mode)
         ]
         # Add optional final activation to decoder (eg. tanh)
         if final_activation is not None:
@@ -235,6 +235,15 @@ class SEANetDecoder(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, z):
+
+        # # i want to print the output after every layer of self.model
+        # for i, layer in enumerate(self.model):
+        #     z = layer(z)
+        #     print(f'Layer {i}: {z}')
+        #     print(layer)
+
+        # sys.exit()
+
         y = self.model(z)
         return y
 
