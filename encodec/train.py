@@ -46,7 +46,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
     model.train()
     disc.train()
     epoch_loss = 0
-    for i, (x, y) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
+    for i, (x, _) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
         # print(f'x shape: {x.shape}')
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
@@ -83,7 +83,9 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         # assert losses_g['l_t'].requires_grad == True
 
         # loss = loss_l1 + loss_l2 + commit_loss + loss_f + loss_g + loss_feat
-        loss = losses_g['l_t'] * config.loss.weight_l1 + commit_loss * config.loss.weight_commit + loss_f + losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
+        loss = losses_g['l_t'] * config.loss.weight_l1 + commit_loss * config.loss.weight_commit + loss_f 
+        if config.model.train_discriminator:
+            losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
 
         optimizer.zero_grad()
         loss.backward()
@@ -116,7 +118,6 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
             epoch_loss += loss_disc.item()
             del logits_real, logits_fake, loss_disc
 
-
         epoch_loss += loss.item()
 
         # add the loss to the tensorboard
@@ -129,8 +130,9 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Frequency Accuracy': acc.item()}, 'train', epoch*len(train_loader) + i)
-        logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'train', epoch*len(train_loader) + i)
-        logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'train', epoch*len(train_loader) + i)
+        if config.model.train_discriminator:
+            logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'train', epoch*len(train_loader) + i)
+            logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'train', epoch*len(train_loader) + i)
 
         max_gradient = torch.tensor(0.0).to(device)
         for param in model.parameters():
@@ -158,7 +160,7 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
     disc.eval()
     epoch_loss = 0
     all_codes = []
-    for i, (x, y) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
+    for i, (x, _) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
         logits_real, fmap_real = disc(x)
@@ -186,10 +188,12 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         # loss_feat = losses_g['l_feat'] * config.loss.weight_feat
         
         # loss = loss_l1 + loss_l2 + commit_loss + loss_f + loss_g + loss_feat + loss_disc
-        loss = losses_g['l_t'] * config.loss.weight_l1 + losses_g['l_t_2'] * config.loss.weight_l2 + commit_loss * config.loss.weight_commit + loss_f + losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
+        loss = losses_g['l_t'] * config.loss.weight_l1 + losses_g['l_t_2'] * config.loss.weight_l2 + commit_loss * config.loss.weight_commit + loss_f 
+        if config.model.train_discriminator:
+            losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
+            epoch_loss += loss_disc.item()
 
         epoch_loss += loss.item()
-        epoch_loss += loss_disc.item()
 
         all_codes.append(codes)
         logger(writer, {'Loss per step': loss.item()}, 'val', epoch*len(train_loader) + i)
@@ -201,13 +205,18 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'val', epoch*len(train_loader) + i)
         logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'val', epoch*len(train_loader) + i)
         logger(writer, {'Frequency Accuracy': acc.item()}, 'val', epoch*len(train_loader) + i)
-        logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'val', epoch*len(val_loader) + i)
-        logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'val', epoch*len(val_loader) + i)
-        logger(writer, {'Loss Discriminator': loss_disc.item()}, 'val', epoch*len(val_loader) + i)
+        if config.model.train_discriminator:
+            logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'val', epoch*len(val_loader) + i)
+            logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'val', epoch*len(val_loader) + i)
+            logger(writer, {'Loss Discriminator': loss_disc.item()}, 'val', epoch*len(val_loader) + i)
 
         if i == 0:
             S_x = freq_loss_dict["S_x"]
             S_x_hat = freq_loss_dict["S_x_hat"]
+            
+            _, num_freq, _ = S_x.size()
+            S_x = S_x[:, :num_freq//2, :]
+            S_x_hat = S_x_hat[:, :num_freq//2, :]
 
             # plot x and the reconstructed x
             fig, axs = plt.subplots(4, 1, figsize=(20, 10))
@@ -240,27 +249,35 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         writer.add_histogram(f'Codes/Codebook {i}', all_codes[i], epoch)
 
     # Create a figure
-    if epoch == 0:
+    if epoch == 0:   
         x = x[0].cpu().numpy().squeeze()
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(2, 1)
         time = np.arange(0, 1200)
-        ax.plot(time, x[10000:11200])
-        ax.set_title("Signal Graph")
-        ax.set_xlabel("Time")
-        ax.set_ylabel("Amplitude")
+        ax[0].plot(time, x[10000:11200])
+        ax[0].set_title("Signal Graph")
+        ax[0].set_xlabel("Time")
+        ax[0].set_ylabel("Amplitude")
+        ax[1].imshow(S_x.detach().cpu().numpy()[0, :, 10000//50: 11200//50], cmap='jet', aspect='auto')
+        ax[1].invert_yaxis()
+        ax[1].set_title("Spectrogram")
+        fig.tight_layout()
 
         # Add figure to TensorBoard
         writer.add_figure("Signal/original", fig)
         writer.close()
         plt.close(fig)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(2, 1)
     x_hat = x_hat[0].cpu().numpy().squeeze()
     time = np.arange(0, 1200)
-    ax.plot(time, x_hat[10000:11200])
-    ax.set_title("Signal Graph")
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Amplitude")
+    ax[0].plot(time, x_hat[10000:11200])
+    ax[0].set_title("Signal Graph")
+    ax[0].set_xlabel("Time")
+    ax[0].set_ylabel("Amplitude")
+    ax[1].imshow(S_x_hat.detach().cpu().numpy()[0, :, 10000//50: 11200//50], cmap='jet', aspect='auto')
+    ax[1].invert_yaxis()
+    ax[1].set_title("Spectrogram")
+    fig.tight_layout()
     
     writer.add_figure(f"Signal/{epoch}", fig)
     writer.close()
@@ -298,10 +315,14 @@ class ConfigNamespace:
             setattr(self, key, value)
 
 # Load the YAML file and convert to ConfigNamespace
-def load_config(filepath):
+def load_config(filepath, log_dir=None):
     #make directory
     with open(filepath, "r") as file:
         config_dict = yaml.safe_load(file)
+        if log_dir:
+            #save yaml file to log_dir
+            with open(f"{log_dir}/config.yaml", "w") as file:
+                yaml.dump(config_dict, file)
     return ConfigNamespace(config_dict)
 
 def init_logger(log_dir):
@@ -328,6 +349,7 @@ def init_model(config):
         audio_normalize=config.model.audio_normalize,
         segment=eval(config.model.segment), name=config.model.name,
         ratios=config.model.ratios,
+        bins=config.model.bins,
     )
     disc_model = MultiScaleSTFTDiscriminator(
         in_channels=config.model.channels,
@@ -360,16 +382,16 @@ def set_args():
 if __name__ == "__main__":
 
     args = set_args()
-    curr_time = datetime.now().strftime("%Y%m%d-%H%M%S")
-
-    # Load the YAML file
-    config = load_config("encodec/params/%s.yaml" % args.exp_name)
+    curr_time = datetime.now().strftime("%Y%m%d")
+    curr_min = datetime.now().strftime("%H%M%S")
 
     # log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', f"{config.exp_details.name}")
-    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{curr_time}'
+    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
         
+    # Load the YAML file
+    config = load_config("encodec/params/%s.yaml" % args.exp_name, log_dir)
     writer = init_logger(log_dir)
 
     device = torch.device("cuda")
@@ -386,8 +408,8 @@ if __name__ == "__main__":
         model = nn.DataParallel(model)
         disc = nn.DataParallel(disc)
     
-    optimizer = optim.AdamW(model.parameters(), lr=float(config.optimization.lr), weight_decay=float(config.optimization.weight_decay))
-    optimizer_disc = optim.AdamW(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(0.5, 0.9))
+    optimizer = optim.AdamW(model.parameters(), lr=float(config.optimization.lr), betas=(0.8, 0.9))
+    optimizer_disc = optim.AdamW(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(0.8, 0.9))
 
     # scheduler = WarmupCosineLrScheduler(optimizer, max_iter=config.common.max_epoch*len(trainloader), eta_ratio=0.1, warmup_iter=config.lr_scheduler.warmup_epoch*len(trainloader), warmup_ratio=1e-4)
 
@@ -396,7 +418,7 @@ if __name__ == "__main__":
     disc_scheduler = LinearWarmupCosineAnnealingLR(optimizer_disc, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
 
     #Reconstruction loss
-    freq_loss = ReconstructionLoss(sampling_rate=10, n_fft=256, device=device)
+    freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
 
     # instantiate loss balancer
     # balancer = Balancer(config.balancer.weights)

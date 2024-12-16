@@ -272,15 +272,15 @@ class EncodecModel(nn.Module):
                    audio_normalize: bool = False,
                    segment: tp.Optional[float] = None,
                    name: str = 'breathing_model',
-                   ratios=[8, 5, 4, 2]):
+                   ratios=[8, 5, 4, 2],
+                   bins=256):
         encoder = m.SEANetEncoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios)
         decoder = m.SEANetDecoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios)
         n_q = int(1000 * target_bandwidths[-1] // (math.ceil(sample_rate / encoder.hop_length) * 10))
         quantizer = qt.ResidualVectorQuantizer(
             dimension=encoder.dimension,
             n_q=n_q,
-            # bins=1024,
-            bins=256,
+            bins=bins,
         )
 
         model = EncodecModel(

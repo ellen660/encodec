@@ -42,7 +42,8 @@ model:
   target_bandwidths: [0.05] #0.1 is 10 codebooks, 0.2 is 20 codebooks
   sample_rate: 10
   channels: 1
-  # train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
+  train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
+  train_discriminator_prob: 0.5
   audio_normalize: False
   filters: 32
   # ratios: [8, 5, 4, 2] #320 downsampling 

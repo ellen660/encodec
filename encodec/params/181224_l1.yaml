@@ -19,11 +19,8 @@ dataset:
   debug: False
 
 checkpoint:
-  resume: False
-  checkpoint_path: ''
-  disc_checkpoint_path: ''
-  save_folder: './checkpoints/'
-  save_location: '${checkpoint.save_folder}/bs${datasets.batch_size}_cut${datasets.tensor_cut}_length${datasets.fixed_length}_' 
+  save: False
+  save_every: 50
 
 optimization:
   lr: 1e-5
@@ -48,14 +45,15 @@ model:
   filters: 32
   # ratios: [8, 5, 4, 2] #320 downsampling 
   ratios: [5, 5, 2, 1] # 10 downsampling
-  disc_win_lengths: [64, 128, 32]
-  disc_hop_lengths: [10, 16, 5]
-  disc_n_ffts: [64, 128, 32]
+  disc_win_lengths: [300]
+  disc_hop_lengths: [50]
+  disc_n_ffts: [256]
   causal: True
   # norm: 'weight_norm'
   norm: 'layer_norm'
   segment: None
   name: 'my_encodec'
+  bins: 256
 
 distributed:
   data_parallel: True

@@ -17,16 +17,14 @@ class BreathingSpectrogram(nn.Module):
         ##############################################
         # FFT Parameters                              #
         ##############################################
-        # hop_length = sampling_rate * 1
-        # win_length = sampling_rate * 1
-        # win_length = n_fft
-        window = torch.hann_window(win_length, device=device).float()
+        self.win_length = 30 * sampling_rate # 30 seconds
+        self.hop_length = 50 # 5 seconds, based on the ratio product
+        window = torch.hann_window(self.win_length, device=device).float()
         self.register_buffer("window", window)
         self.n_fft = n_fft
+        # win_length = n_fft
         # self.hop_length = n_fft // 4
         # self.win_length = win_length # 256
-        self.win_length = 30 * sampling_rate
-        self.hop_length = 50
 
     def forward(self, signal):
         # Ensure input dimensions are [B, 1, T]
@@ -89,16 +87,17 @@ def create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandw
 
 
 class ReconstructionLoss(nn.Module):
-    def __init__(self, alpha, bandwidth=None, sampling_rate=10, n_fft=64, device='cuda', ):
+    def __init__(self, alpha=0.01, bandwidth=None, sampling_rate=10, n_fft=64, device='cuda'):
         super().__init__()
         self.spectrogram = BreathingSpectrogram(sampling_rate=sampling_rate, n_fft=n_fft, device=device)
 
         self.bin_freq = (1 / n_fft) / 2
+        self.n_fft = n_fft
 
         self.device = device
 
-        # self.bandwidth = 5.0
-        self.bandwidth = bandwidth
+        self.bandwidth = 5.0
+        # self.bandwidth = bandwidth
 
         self.alpha = alpha
 
