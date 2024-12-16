@@ -46,11 +46,14 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
     # l_g = torch.tensor([0.0], device='cuda', requires_grad=True)
     # l_feat = torch.tensor([0.0], device='cuda', requires_grad=True)
 
+    l_t = 0
+    l_t_2 = 0
     l_g = 0
     l_feat = 0
 
     #time domain loss, output_wav is the output of the generator
     l_t = l1Loss(input_wav, output_wav) 
+    l_t_2 = l2Loss(input_wav, output_wav)
 
     #frequency domain loss, window length is 2^i, hop length is 2^i/4, i \in [5,11]. combine l1 and l2 loss
     # for i in range(5, 12): #e=5,...,11
@@ -72,10 +75,11 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
     l_g /= K_scale
 
 
-    print(f"l_t: {l_t}, l_g: {l_g}, l_feat: {l_feat}")
+    # print(f"l_t: {l_t}, l_g: {l_g}, l_feat: {l_feat}")
 
     return {
         'l_t': l_t,
+        'l_t_2': l_t_2,
         # 'l_f': l_f,
         'l_g': l_g,
         'l_feat': l_feat,
@@ -92,7 +96,8 @@ def disc_loss(logits_real, logits_fake):
         lossd: discriminator loss
     """
     relu = torch.nn.ReLU()
-    lossd = torch.tensor([0.0], device='cuda', requires_grad=True)
+    # lossd = torch.tensor([0.0], device='cuda', requires_grad=True)
+    lossd = 0
     for tt1 in range(len(logits_real)):
         lossd = lossd + torch.mean(relu(1-logits_real[tt1])) + torch.mean(relu(1+logits_fake[tt1]))
     lossd = lossd / len(logits_real)
