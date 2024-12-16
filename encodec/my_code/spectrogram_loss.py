@@ -94,6 +94,8 @@ class ReconstructionLoss(nn.Module):
 
         self.device = device
 
+        self.bandwidth = 5.0
+
     def forward(self, x, x_hat):
         # Compute spectrograms
         S_x = self.spectrogram(x)
@@ -118,18 +120,20 @@ class ReconstructionLoss(nn.Module):
         frequency_bins = torch.arange(num_freq, device=self.device).unsqueeze(0).unsqueeze(-1).repeat(batch_size, 1, num_frames)
         breathing_frequency = Sx_breathing_rate.unsqueeze(1).repeat(1, num_freq, 1)
 
-        weight = create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandwidth=1.0, device=self.device)
+        weight = create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandwidth=self.bandwidth, device=self.device)
 
         # Compute L1 loss in the frequency domain
         l1_loss = F.l1_loss(S_x, S_x_hat, reduction='none')
         l1_loss = torch.mean(l1_loss * weight)
 
         # Compute L2 loss in the frequency domain
-        l2_loss = torch.sqrt(F.mse_loss(S_x, S_x_hat, reduction='none') + 1e-8)
+        l2_loss = F.mse_loss(S_x, S_x_hat, reduction='none')
         l2_loss = torch.mean(l2_loss * weight)
 
+        # TODO: change to torch.mean(torch.sqrt(l1_loss) * weight)? Let ellen hyperparameter tune this
+
         # Combine losses with equal weighting (adjust if necessary)
-        total_loss = l1_loss + l2_loss
+        total_loss = l1_loss + l2_loss * 0.01
         
         results = {
             'total_loss': total_loss,

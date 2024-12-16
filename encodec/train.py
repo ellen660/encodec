@@ -63,6 +63,11 @@ def train_one_step(epoch, optimizer, scheduler, model, train_loader,config,freq_
         epoch_loss += loss.item()
         optimizer.zero_grad()
         loss.backward()
+
+        # gradient clipping. restrict the norm of the gradients to be less than 1
+        if config.common.gradient_clipping:
+            nn.utils.clip_grad_norm_(model.parameters(), 0.1)
+
         optimizer.step()
 
         # add the loss to the tensorboard
@@ -281,7 +286,8 @@ if __name__ == "__main__":
     if data_parallel:
         model = nn.DataParallel(model)
     
-    optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), weight_decay=float(config.optimization.weight_decay))
+    # optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), weight_decay=float(config.optimization.weight_decay))
+    optimizer = optim.AdamW(model.parameters(), lr=float(config.optimization.lr), weight_decay=float(config.optimization.weight_decay))
     # scheduler = WarmupCosineLrScheduler(optimizer, max_iter=config.common.max_epoch*len(trainloader), eta_ratio=0.1, warmup_iter=config.lr_scheduler.warmup_epoch*len(trainloader), warmup_ratio=1e-4)
 
     # cosine annealing scheduler
