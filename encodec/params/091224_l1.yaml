@@ -35,7 +35,7 @@ loss:
   weight_g: 3.
   weight_feat: 3.
   alpha: 0.01
-  bandwidth: None
+  bandwidth: null
   n_fft: 1024 # 300 then 512 then 1024
 
 lr_scheduler:

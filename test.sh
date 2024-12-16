@@ -2,7 +2,7 @@
 
 # CUDA_VISIBLE_DEVICES=2 python3 encodec/train.py --exp_name 091224_l2 &
 
-# python3 encodec/train.py --exp_name config
+python3 encodec/train.py --exp_name config
 
 # python3 encodec/train.py --exp_name 141224_l1 &
 
@@ -12,6 +12,6 @@
 
 # python3 encodec/train.py --exp_name 171224_l1 &
 
-python3 encodec/train.py --exp_name 181224_l1 &
+# python3 encodec/train.py --exp_name 181224_l1 &
 
-python3 encodec/train.py --exp_name 191224_l1 &
+# python3 encodec/train.py --exp_name 191224_l1 &

@@ -34,6 +34,7 @@ loss:
   weight_l2: 0.
   weight_commit: 0
   weight_freq: 5
+  bandwidth: None
 
 lr_scheduler:
   warmup_epoch: 10
