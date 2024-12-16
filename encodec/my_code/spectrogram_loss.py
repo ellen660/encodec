@@ -17,14 +17,16 @@ class BreathingSpectrogram(nn.Module):
         ##############################################
         # FFT Parameters                              #
         ##############################################
-        hop_length = sampling_rate * 1
+        # hop_length = sampling_rate * 1
         # win_length = sampling_rate * 1
-        win_length = n_fft
+        # win_length = n_fft
         window = torch.hann_window(win_length, device=device).float()
         self.register_buffer("window", window)
         self.n_fft = n_fft
-        self.hop_length = n_fft // 4
-        self.win_length = win_length # 256
+        # self.hop_length = n_fft // 4
+        # self.win_length = win_length # 256
+        self.win_length = 30 * sampling_rate
+        self.hop_length = 50
 
     def forward(self, signal):
         # Ensure input dimensions are [B, 1, T]
