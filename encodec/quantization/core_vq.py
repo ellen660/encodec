@@ -178,43 +178,11 @@ class EuclideanCodebook(nn.Module):
     def quantize(self, x):
         embed = self.embed.t()
 
-        # print(f'x shape: {x.shape}')
-        # sys.exit()
-
-        # plot the distribution of the embeddings and x
-        # move to cpu
-        # plt.hist(x.cpu().detach().numpy().flatten(), bins=100, alpha=0.5, label='x', density=True)
-        # plt.hist(embed.cpu().detach().numpy().flatten(), bins=100, alpha=0.5, label='embed', density=True)
-        
-        # plt.legend(loc='upper right')
-        # plt.savefig('embed_x.png')
-        # plt.close()
-
-        # apply instance norm 1d to x
-
-        # plot the distribution of x along each dimension
-        # combine the first two dimensions
-        # shape of x: (batch_size, seq_len, dim)
-        # x = x.view(-1, x.shape[-1])
-        # print(x.shape)
-
-        # x = x.cpu().detach().numpy()
-
-        # for i in range(x.shape[1]):
-        #     plt.hist(x[:, i], bins=100, alpha=0.5, density=True)
-        # plt.savefig('x.png')
-        # sys.exit()
-
         dist = -(
             x.pow(2).sum(1, keepdim=True)
             - 2 * x @ embed
             + embed.pow(2).sum(0, keepdim=True)
         )
-
-        # print(dist)
-        # print(dist.shape)
-        # print(torch.argmax(dist, dim=-1))
-        # sys.exit()
 
         embed_ind = dist.max(dim=-1).indices
         return embed_ind

@@ -182,27 +182,27 @@ class SEANetDecoder(nn.Module):
                  trim_right_ratio: float = 1.0):
         super().__init__()
 
-        print(f'channels: {channels}')
-        print(f'dimension: {dimension}')
-        print(f'n_filters: {n_filters}')
-        print(f'n_residual_layers: {n_residual_layers}')
-        print(f'ratios: {ratios}')
-        print(f'activation: {activation}')
-        print(f'activation_params: {activation_params}')
-        print(f'final_activation: {final_activation}')
-        print(f'final_activation_params: {final_activation_params}')
-        print(f'norm: {norm}')
-        print(f'norm_params: {norm_params}')
-        print(f'kernel_size: {kernel_size}')
-        print(f'last_kernel_size: {last_kernel_size}')
-        print(f'residual_kernel_size: {residual_kernel_size}')
-        print(f'dilation_base: {dilation_base}')
-        print(f'causal: {causal}')
-        print(f'pad_mode: {pad_mode}')
-        print(f'true_skip: {true_skip}')
-        print(f'compress: {compress}')
-        print(f'lstm: {lstm}')
-        print(f'trim_right_ratio: {trim_right_ratio}')
+        # print(f'channels: {channels}')
+        # print(f'dimension: {dimension}')
+        # print(f'n_filters: {n_filters}')
+        # print(f'n_residual_layers: {n_residual_layers}')
+        # print(f'ratios: {ratios}')
+        # print(f'activation: {activation}')
+        # print(f'activation_params: {activation_params}')
+        # print(f'final_activation: {final_activation}')
+        # print(f'final_activation_params: {final_activation_params}')
+        # print(f'norm: {norm}')
+        # print(f'norm_params: {norm_params}')
+        # print(f'kernel_size: {kernel_size}')
+        # print(f'last_kernel_size: {last_kernel_size}')
+        # print(f'residual_kernel_size: {residual_kernel_size}')
+        # print(f'dilation_base: {dilation_base}')
+        # print(f'causal: {causal}')
+        # print(f'pad_mode: {pad_mode}')
+        # print(f'true_skip: {true_skip}')
+        # print(f'compress: {compress}')
+        # print(f'lstm: {lstm}')
+        # print(f'trim_right_ratio: {trim_right_ratio}')
         # sys.exit()
         self.dimension = dimension
         # assert self.dimension == 32
@@ -247,8 +247,8 @@ class SEANetDecoder(nn.Module):
         # Add final layers
         model += [
             act(**activation_params),
-            SConv1d(n_filters, channels, last_kernel_size, norm='none', norm_kwargs=norm_params,
-                    causal=causal, pad_mode=pad_mode)
+            # SConv1d(n_filters, channels, last_kernel_size, norm=norm, norm_kwargs=norm_params, causal=causal, pad_mode=pad_mode)
+            SConv1d(n_filters, channels, last_kernel_size, norm = 'none', causal=causal, pad_mode=pad_mode)
         ]
         # Add optional final activation to decoder (eg. tanh)
         if final_activation is not None:
@@ -263,6 +263,15 @@ class SEANetDecoder(nn.Module):
         # sys.exit()
 
     def forward(self, z):
+
+        # # i want to print the output after every layer of self.model
+        # for i, layer in enumerate(self.model):
+        #     z = layer(z)
+        #     print(f'Layer {i}: {z}')
+        #     print(layer)
+
+        # sys.exit()
+
         y = self.model(z)
         return y
 

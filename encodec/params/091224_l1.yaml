@@ -1,7 +1,7 @@
 exp_details:
   name: '091224_l1'
   description: '4 hours at 10 hz'
-  date: '2024-12-14'
+  date: '2024-12-15'
 
 common:
   save_interval: 2
@@ -15,19 +15,19 @@ dataset:
   batch_size: 8
   max_length: 144000 # 4 hours at 10 hz
   num_workers: 10
-  debug: False
+  debug: True
 
-checkpoint:
-  resume: False
-  checkpoint_path: ''
-  disc_checkpoint_path: ''
-  save_folder: './checkpoints/'
-  save_location: '${checkpoint.save_folder}/bs${datasets.batch_size}_cut${datasets.tensor_cut}_length${datasets.fixed_length}_' 
+# checkpoint:
+  # resume: False
+  # checkpoint_path: ''
+  # disc_checkpoint_path: ''
+  # save_folder: './checkpoints/'
+  # save_location: '${checkpoint.save_folder}/bs${datasets.batch_size}_cut${datasets.tensor_cut}_length${datasets.fixed_length}_' 
 
 optimization:
   lr: 1e-4
   weight_decay: 1e-6
-  # disc_lr: 3e-4
+  disc_lr: 3e-4
 
 loss:
   weight_l1: 1.
@@ -45,7 +45,8 @@ model:
   sample_rate: 10
   channels: 1
   train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
-  audio_normalize: True
+  train_discriminator_prob: 0.5
+  audio_normalize: False
   filters: 32
   # ratios: [8, 5, 4, 2] #320 downsampling 
   ratios: [5, 5, 2, 1] # 10 downsampling
