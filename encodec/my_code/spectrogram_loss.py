@@ -75,6 +75,7 @@ def create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandw
 
     weight has the shape (batch_size, num_freq, num_frames)
     """
+
     # Gaussian-like decay weight function centered at the breathing frequency
     weight = torch.exp(-((frequency_bins - breathing_frequency) ** 2) / (2 * bandwidth ** 2) + 1e-8)
 
@@ -88,7 +89,7 @@ def create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandw
 
 
 class ReconstructionLoss(nn.Module):
-    def __init__(self, sampling_rate=10, n_fft=64, device='cuda'):
+    def __init__(self, alpha, bandwidth=None, sampling_rate=10, n_fft=64, device='cuda', ):
         super().__init__()
         self.spectrogram = BreathingSpectrogram(sampling_rate=sampling_rate, n_fft=n_fft, device=device)
 
@@ -96,7 +97,10 @@ class ReconstructionLoss(nn.Module):
 
         self.device = device
 
-        self.bandwidth = 5.0
+        # self.bandwidth = 5.0
+        self.bandwidth = bandwidth
+
+        self.alpha = alpha
 
     def forward(self, x, x_hat):
         # Compute spectrograms
@@ -135,7 +139,7 @@ class ReconstructionLoss(nn.Module):
         # TODO: change to torch.mean(torch.sqrt(l1_loss) * weight)? Let ellen hyperparameter tune this
 
         # Combine losses with equal weighting (adjust if necessary)
-        total_loss = l1_loss + l2_loss * 0.01
+        total_loss = l1_loss + l2_loss * self.alpha 
         
         results = {
             'total_loss': total_loss,
