@@ -53,6 +53,9 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         logits_real, fmap_real = disc(x)
         logits_fake, fmap_fake = disc(x_hat)
 
+        # if model.module.quantizer.codebooks is not None:
+        #     print(f'model codebooks: {model.quantizer.codebooks.keys()}')
+
         commit_loss = torch.mean(commit_loss)
         # loss_l1 = loss_fn_l1(x, x_hat)
         # loss_l2 = loss_fn_l2(x, x_hat)
@@ -66,7 +69,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
                 sample_rate=10,
             ) 
         del logits_real, logits_fake, fmap_real, fmap_fake
-        
+
         loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
         loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
         acc = freq_loss_dict["acc"] * config.loss.weight_freq
@@ -108,6 +111,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         )
 
         if train_discriminator:
+            print(f'train discriminator')
             logits_real, _ = disc(x)
             logits_fake, _ = disc(x_hat.detach()) # detach to avoid backpropagation to model
             loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss\
