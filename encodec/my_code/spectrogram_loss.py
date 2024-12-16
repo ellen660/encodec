@@ -62,7 +62,8 @@ class BreathingSpectrogram(nn.Module):
         # Restore original shape [B, H, T]
         return log_spectrogram
 
-def create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandwidth=1.0, device='cpu'):
+# def create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandwidth=1.0, device='cpu'):
+def create_breathing_frequency_weight(S_x, Sx_breathing_rate, bandwidth=1.0, device='cpu'):
     """
     Creates a weight distribution that assigns higher weights around the breathing frequency.
     The weight decays as you move away from the breathing frequency.
@@ -74,15 +75,24 @@ def create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandw
     weight has the shape (batch_size, num_freq, num_frames)
     """
 
-    # Gaussian-like decay weight function centered at the breathing frequency
-    weight = torch.exp(-((frequency_bins - breathing_frequency) ** 2) / (2 * bandwidth ** 2) + 1e-8)
+    batch_size, num_freq, num_frames = S_x.size()
 
-    # normalize such that max weight for each frame is 1
-    weight = weight / torch.max(weight, dim=1, keepdim=True)[0]
+    frequency_bins = torch.arange(num_freq, device = device).unsqueeze(0).unsqueeze(-1).repeat(batch_size, 1, num_frames)
+    breathing_frequency = Sx_breathing_rate.unsqueeze(1).repeat(1, num_freq, 1)
 
-    weight = torch.clamp(weight, min=1e-3, max=1.0)
+    if bandwidth is None:
+        weight = torch.ones(S_x.size(), device=device)
+    else:
+        # Gaussian-like decay weight function centered at the breathing frequency
+        weight = torch.exp(-((frequency_bins - breathing_frequency) ** 2) / (2 * bandwidth ** 2) + 1e-8)
 
-    weight = weight.to(device)
+        # normalize such that max weight for each frame is 1
+        weight = weight / torch.max(weight, dim=1, keepdim=True)[0]
+
+        weight = torch.clamp(weight, min=1e-3, max=1.0)
+
+        weight = weight.to(device)
+
     return weight
 
 
@@ -96,8 +106,7 @@ class ReconstructionLoss(nn.Module):
 
         self.device = device
 
-        self.bandwidth = 5.0
-        # self.bandwidth = bandwidth
+        self.bandwidth = bandwidth
 
         self.alpha = alpha
 
@@ -120,12 +129,14 @@ class ReconstructionLoss(nn.Module):
         # TODO: include weights to penalize lower frequencies. this weight is a 2d matrix, with the same shape as S_x, where the highest weight_value corresponds to indices associated with Sx_breathing_rate
         
         # create a matrix of frequency bins of shape (batch_size, num_freq, num_frames), where each row is the frequency bin index
-        batch_size, num_freq, num_frames = S_x.size()
+        # batch_size, num_freq, num_frames = S_x.size()
 
-        frequency_bins = torch.arange(num_freq, device=self.device).unsqueeze(0).unsqueeze(-1).repeat(batch_size, 1, num_frames)
-        breathing_frequency = Sx_breathing_rate.unsqueeze(1).repeat(1, num_freq, 1)
+        # frequency_bins = torch.arange(num_freq, device=self.device).unsqueeze(0).unsqueeze(-1).repeat(batch_size, 1, num_frames)
+        # breathing_frequency = Sx_breathing_rate.unsqueeze(1).repeat(1, num_freq, 1)
 
-        weight = create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandwidth=self.bandwidth, device=self.device)
+        # weight = create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandwidth=self.bandwidth, device=self.device)
+        
+        weight = create_breathing_frequency_weight(S_x, Sx_breathing_rate, bandwidth=self.bandwidth, device=self.device)
 
         # Compute L1 loss in the frequency domain
         l1_loss = F.l1_loss(S_x, S_x_hat, reduction='none')
@@ -134,8 +145,6 @@ class ReconstructionLoss(nn.Module):
         # Compute L2 loss in the frequency domain
         l2_loss = F.mse_loss(S_x, S_x_hat, reduction='none')
         l2_loss = torch.mean(l2_loss * weight)
-
-        # TODO: change to torch.mean(torch.sqrt(l1_loss) * weight)? Let ellen hyperparameter tune this
 
         # Combine losses with equal weighting (adjust if necessary)
         total_loss = l1_loss + l2_loss * self.alpha 

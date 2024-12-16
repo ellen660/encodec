@@ -238,8 +238,8 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
             axs[3].set_title('Reconstructed Spectrogram')
 
             fig.tight_layout()
-            # fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
-            fig.savefig(f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{epoch}.png')
+            fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
+            # fig.savefig(f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{epoch}.png')
             plt.close(fig)
 
     all_codes = torch.cat(all_codes, dim=0) # B, num_codebooks, T
@@ -389,8 +389,8 @@ if __name__ == "__main__":
     curr_time = datetime.now().strftime("%Y%m%d")
     curr_min = datetime.now().strftime("%H%M%S")
 
-    # log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', f"{config.exp_details.name}")
-    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
+    log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
+    # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
         
