@@ -127,6 +127,10 @@ class EncodecModel(nn.Module):
         if segment_length is None:
             return None
         return max(1, int((1 - self.overlap) * segment_length))
+    
+    @property
+    def codebooks(self):
+        return self.quantizer.codebooks
 
     def encode(self, x: torch.Tensor) -> tp.List[EncodedFrame]:
         """Given a tensor `x`, returns a list of frames containing

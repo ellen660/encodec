@@ -1,7 +1,7 @@
 from model import EncodecModel
 from my_code.dataset import BreathingDataset
 from my_code.losses import loss_fn_l1, loss_fn_l2, total_loss, disc_loss
-from my_code.schedulers import LinearWarmupCosineAnnealingLR
+from my_code.schedulers import LinearWarmupCosineAnnealingLR, WarmupScheduler
 from msstftd import MultiScaleSTFTDiscriminator
 # from scheduler import WarmupCosineLrScheduler
 # from utils import (save_master_checkpoint, set_seed,
@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import sys
-from my_code.spectrogram_loss import BreathingSpectrogram, ReconstructionLoss
+from my_code.spectrogram_loss import BreathingSpectrogram, ReconstructionLoss, ReconstructionLosses
 
 def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config, writer, freq_loss):
     """train one step function
@@ -227,19 +227,21 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
 
             axs[0].plot(x[0].cpu().numpy().squeeze())
             axs[0].set_title('Original')
+            axs[0].set_ylim(-4, 4)
             axs[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto')
             axs[1].invert_yaxis()
             axs[1].set_title('Original Spectrogram')
 
             axs[2].plot(x_hat[0].cpu().numpy().squeeze())
             axs[2].set_title('Reconstructed')
+            axs[2].set_ylim(-4, 4)
             axs[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto')
             axs[3].invert_yaxis()
             axs[3].set_title('Reconstructed Spectrogram')
 
             fig.tight_layout()
-            fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
-            # fig.savefig(f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{epoch}.png')
+            # fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
+            fig.savefig(f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{epoch}.png')
             plt.close(fig)
 
     all_codes = torch.cat(all_codes, dim=0) # B, num_codebooks, T
@@ -252,7 +254,7 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
     for i in range(all_codes.shape[0]):
         writer.add_histogram(f'Codes/Codebook {i}', all_codes[i], epoch)
 
-    # Create a figure
+    # Create a signal of 2 minutes 
     if epoch == 0:   
         x = x[0].cpu().numpy().squeeze()
         fig, ax = plt.subplots(2, 1)
@@ -261,6 +263,7 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         ax[0].set_title("Signal Graph")
         ax[0].set_xlabel("Time")
         ax[0].set_ylabel("Amplitude")
+        ax[0].set_ylim(-4, 4)
         ax[1].imshow(S_x.detach().cpu().numpy()[0, :, 10000//50: 11200//50], cmap='jet', aspect='auto')
         ax[1].invert_yaxis()
         ax[1].set_title("Spectrogram")
@@ -278,6 +281,7 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
     ax[0].set_title("Signal Graph")
     ax[0].set_xlabel("Time")
     ax[0].set_ylabel("Amplitude")
+    ax[0].set_ylim(-4, 4)
     ax[1].imshow(S_x_hat.detach().cpu().numpy()[0, :, 10000//50: 11200//50], cmap='jet', aspect='auto')
     ax[1].invert_yaxis()
     ax[1].set_title("Spectrogram")
@@ -389,8 +393,8 @@ if __name__ == "__main__":
     curr_time = datetime.now().strftime("%Y%m%d")
     curr_min = datetime.now().strftime("%H%M%S")
 
-    log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
-    # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
+    # log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
+    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
         
@@ -418,11 +422,12 @@ if __name__ == "__main__":
     # scheduler = WarmupCosineLrScheduler(optimizer, max_iter=config.common.max_epoch*len(trainloader), eta_ratio=0.1, warmup_iter=config.lr_scheduler.warmup_epoch*len(trainloader), warmup_ratio=1e-4)
 
     # cosine annealing scheduler
-    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
+    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch, min_lr=float(config.optimization.lr)/2)
     disc_scheduler = LinearWarmupCosineAnnealingLR(optimizer_disc, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
 
     #Reconstruction loss
     freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
+    # freq_loss = ReconstructionLosses(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, hop_length=config.loss.hop_length, win_length=config.loss.win_length, device=device)
 
     # instantiate loss balancer
     # balancer = Balancer(config.balancer.weights)
@@ -435,7 +440,16 @@ if __name__ == "__main__":
         if epoch % config.common.test_interval == 0:
             test(epoch,model,disc, val_loader,config,writer, freq_loss=freq_loss)
         # save checkpoint and epoch
-        # if epoch % config.common.save_interval == 0:
+        if epoch % config.checkpoint.save_every == 0:
+            if config.distributed.data_parallel:
+                torch.save(model.module.state_dict(), f"{log_dir}/model.pth")
+                torch.save(disc.module.state_dict(), f"{log_dir}/disc.pth")
+            else:
+                torch.save(model.state_dict(), f"{log_dir}/model.pth")
+                torch.save(disc.state_dict(), f"{log_dir}/disc.pth")
+            # model_to_save = model.module if config.distributed.data_parallel else model
+            # disc_model_to_save = disc.module if config.distributed.data_parallel else disc
+
         #     model_to_save = model.module if config.distributed.data_parallel else model
         #     # disc_model_to_save = disc_model.module if config.distributed.data_parallel else disc_model 
         #     if not config.distributed.data_parallel or dist.get_rank() == 0:  
