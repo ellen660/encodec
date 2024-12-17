@@ -63,19 +63,24 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
     #generator loss and feat loss, D_k(\hat x) = logits_fake[k], D_k^l(x) = fmap_real[k][l], D_k^l(\hat x) = fmap_fake[k][l]
     # l_g = \sum max(0, 1 - D_k(\hat x)) / K, K = disc.num_discriminators = len(fmap_real) = len(fmap_fake) = len(logits_fake) = 3
     # l_feat = \sum |D_k^l(x) - D_k^l(\hat x)| / |D_k^l(x)| / KL, KL = len(fmap_real[0])*len(fmap_real)=3 * 5
-    for tt1 in range(len(fmap_real)): # len(fmap_real) = 3
-        l_g = l_g + torch.mean(relu(1 - logits_fake[tt1])) / len(logits_fake)
-        for tt2 in range(len(fmap_real[tt1])): # len(fmap_real[tt1]) = 5
-            # l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2].detach()))
-            l_feat = l_feat + l1Loss(fmap_real[tt1][tt2], fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2]))
 
-    KL_scale = len(fmap_real)*len(fmap_real[0]) # len(fmap_real) == len(fmap_fake) == len(logits_real) == len(logits_fake) == disc.num_discriminators == K
-    l_feat /= KL_scale
-    K_scale = len(fmap_real) # len(fmap_real[0]) = len(fmap_fake[0]) == L
-    l_g /= K_scale
+    if fmap_real is not None:
+        for tt1 in range(len(fmap_real)): # len(fmap_real) = 3
+            l_g = l_g + torch.mean(relu(1 - logits_fake[tt1])) / len(logits_fake)
+            for tt2 in range(len(fmap_real[tt1])): # len(fmap_real[tt1]) = 5
+                # l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2].detach()))
+                l_feat = l_feat + l1Loss(fmap_real[tt1][tt2], fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2]))
 
+        KL_scale = len(fmap_real)*len(fmap_real[0]) # len(fmap_real) == len(fmap_fake) == len(logits_real) == len(logits_fake) == disc.num_discriminators == K
+        l_feat /= KL_scale
+        K_scale = len(fmap_real) # len(fmap_real[0]) = len(fmap_fake[0]) == L
+        l_g /= K_scale
+    else:
+        l_g = torch.tensor([0.0], device='cuda', requires_grad=False)
+        l_feat = torch.tensor([0.0], device='cuda', requires_grad=False)
 
     # print(f"l_t: {l_t}, l_g: {l_g}, l_feat: {l_feat}")
+    # TODO: l_t does not have gradients???
 
     return {
         'l_t': l_t,

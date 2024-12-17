@@ -44,14 +44,21 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         warmup_scheduler (_type_): warmup learning rate
     """
     model.train()
-    disc.train()
+    
+    if config.model.train_discriminator:
+        disc.train()
+
     epoch_loss = 0
     for i, (x, _) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
         # print(f'x shape: {x.shape}')
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
-        logits_real, fmap_real = disc(x)
-        logits_fake, fmap_fake = disc(x_hat)
+
+        if config.model.train_discriminator:
+            logits_real, fmap_real = disc(x)
+            logits_fake, fmap_fake = disc(x_hat)
+        else:
+            logits_real, logits_fake, fmap_real, fmap_fake = None, None, None, None
 
         commit_loss = torch.mean(commit_loss)
         # loss_l1 = loss_fn_l1(x, x_hat)
@@ -65,11 +72,10 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
                 x_hat, 
                 sample_rate=10,
             ) 
-        del logits_real, logits_fake, fmap_real, fmap_fake
         
         loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
         loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
-        acc = freq_loss_dict["acc"] * config.loss.weight_freq
+        acc = freq_loss_dict["acc"]
         loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
         # loss_g = losses_g['l_g'] * config.loss.weight_g
         # loss_feat = losses_g['l_feat'] * config.loss.weight_feat
@@ -84,8 +90,9 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
 
         # loss = loss_l1 + loss_l2 + commit_loss + loss_f + loss_g + loss_feat
         loss = losses_g['l_t'] * config.loss.weight_l1 + commit_loss * config.loss.weight_commit + loss_f 
+        
         if config.model.train_discriminator:
-            losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
+            loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
 
         optimizer.zero_grad()
         loss.backward()
@@ -97,17 +104,18 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         optimizer.step()
 
         # only update discriminator with probability from paper (configure)
-        optimizer_disc.zero_grad()
+        # optimizer_disc.zero_grad()
         # train_discriminator = torch.BoolTensor([config.model.train_discriminator 
         #                        and epoch >= config.lr_scheduler.warmup_epoch 
         #                        and random.random() < float(config.model.train_discriminator_prob)]).cuda()
-        train_discriminator = (
-            config.model.train_discriminator
-            and epoch >= config.lr_scheduler.warmup_epoch
-            and random.random() < float(config.model.train_discriminator_prob)
-        )
 
-        if train_discriminator:
+        if config.model.train_discriminator:
+            train_discriminator = (
+                config.model.train_discriminator
+                and epoch >= config.lr_scheduler.warmup_epoch
+                and random.random() < float(config.model.train_discriminator_prob)
+            )
+
             logits_real, _ = disc(x)
             logits_fake, _ = disc(x_hat.detach()) # detach to avoid backpropagation to model
             loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss\
@@ -116,7 +124,6 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
             optimizer_disc.step()
             logger(writer, {'Loss Discriminator': loss_disc.item()}, 'train', epoch*len(train_loader) + i)
             epoch_loss += loss_disc.item()
-            del logits_real, logits_fake, loss_disc
 
         epoch_loss += loss.item()
 
@@ -130,6 +137,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Frequency Accuracy': acc.item()}, 'train', epoch*len(train_loader) + i)
+        
         if config.model.train_discriminator:
             logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'train', epoch*len(train_loader) + i)
             logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'train', epoch*len(train_loader) + i)
@@ -145,7 +153,9 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
     # log the learning rate
     logger(writer, {'Learning Rate': optimizer.param_groups[0]['lr']}, 'train', epoch)
     scheduler.step()
-    disc_scheduler.step()
+
+    if config.model.train_discriminator:
+        disc_scheduler.step()
 
     loss_per_epoch = epoch_loss/len(train_loader)
     print(f"Epoch {epoch}, training loss: {loss_per_epoch}")
@@ -157,14 +167,19 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
 @torch.no_grad()
 def test(epoch, model, disc, val_loader, config, writer, freq_loss):
     model.eval()
-    disc.eval()
+    if config.model.train_discriminator:
+        disc.eval()
     epoch_loss = 0
     all_codes = []
     for i, (x, _) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
-        logits_real, fmap_real = disc(x)
-        logits_fake, fmap_fake = disc(x_hat)
+
+        if config.model.train_discriminator:
+            logits_real, fmap_real = disc(x)
+            logits_fake, fmap_fake = disc(x_hat)
+        else:
+            logits_real, logits_fake, fmap_real, fmap_fake = None, None, None, None
 
         commit_loss = torch.mean(commit_loss)
         # loss_l1 = loss_fn_l1(x, x_hat)
@@ -177,8 +192,9 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
                 x, 
                 x_hat, 
                 sample_rate=10,
-            ) 
-        loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss
+            )
+        if config.model.train_discriminator:
+            loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss
 
         loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
         loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
@@ -189,8 +205,9 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         
         # loss = loss_l1 + loss_l2 + commit_loss + loss_f + loss_g + loss_feat + loss_disc
         loss = losses_g['l_t'] * config.loss.weight_l1 + losses_g['l_t_2'] * config.loss.weight_l2 + commit_loss * config.loss.weight_commit + loss_f 
+        
         if config.model.train_discriminator:
-            losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
+            loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
             epoch_loss += loss_disc.item()
 
         epoch_loss += loss.item()
@@ -400,22 +417,34 @@ if __name__ == "__main__":
     data_parallel = config.distributed.data_parallel
 
     train_loader, val_loader = init_dataset(config)
+    # model, disc = init_model(config)
     model, disc = init_model(config)
     model = model.to(device)
-    disc = disc.to(device)
+
+    if config.model.train_discriminator:
+        disc = disc.to(device)
+    else:
+        disc = None
 
     if data_parallel:
         model = nn.DataParallel(model)
-        disc = nn.DataParallel(disc)
+        # disc = nn.DataParallel(disc)
     
     optimizer = optim.AdamW(model.parameters(), lr=float(config.optimization.lr), betas=(0.8, 0.9))
-    optimizer_disc = optim.AdamW(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(0.8, 0.9))
+    if config.model.train_discriminator:
+        optimizer_disc = optim.AdamW(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(0.8, 0.9))
+    else:
+        optimizer_disc = None
 
     # scheduler = WarmupCosineLrScheduler(optimizer, max_iter=config.common.max_epoch*len(trainloader), eta_ratio=0.1, warmup_iter=config.lr_scheduler.warmup_epoch*len(trainloader), warmup_ratio=1e-4)
 
     # cosine annealing scheduler
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
-    disc_scheduler = LinearWarmupCosineAnnealingLR(optimizer_disc, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
+
+    if config.model.train_discriminator:
+        disc_scheduler = LinearWarmupCosineAnnealingLR(optimizer_disc, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
+    else:
+        disc_scheduler = None
 
     #Reconstruction loss
     freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
