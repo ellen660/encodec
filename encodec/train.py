@@ -243,7 +243,6 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
 
             time_start = 0
             time_end = x.shape[-1]
-            num_time_bins = S_x.shape[-1]
 
             x_time = np.arange(time_start, time_end, 1)
 
@@ -272,8 +271,6 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
             else:
                 raise Exception("User not recognized")
             plt.close(fig)
-
-            sys.exit()
 
     all_codes = torch.cat(all_codes, dim=0) # B, num_codebooks, T
     all_codes = torch.permute(all_codes, (1, 0, 2))
