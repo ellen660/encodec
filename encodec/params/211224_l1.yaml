@@ -1,5 +1,5 @@
 exp_details:
-  name: '191224_l1'
+  name: '211224_l1'
   description: '4 hours at 10 hz'
   date: '2024-12-14'
 
@@ -25,13 +25,13 @@ checkpoint:
 optimization:
   lr: 1e-5
   weight_decay: 1e-6
-  # disc_lr: 3e-4
+  disc_lr: 3e-4
 
 loss:
   weight_l1: 1.
   weight_l2: 0.
   weight_commit: 0.
-  weight_freq: 0.25
+  weight_freq: 1.
   weight_g: 3.
   weight_feat: 3.
   alpha: 0.01
@@ -50,15 +50,15 @@ model:
   filters: 32
   # ratios: [8, 5, 4, 2] #320 downsampling 
   ratios: [5, 5, 2, 1] # 10 downsampling
-  disc_win_lengths: [300]
-  disc_hop_lengths: [50]
-  disc_n_ffts: [256]
+  disc_win_lengths: [64, 128, 32]
+  disc_hop_lengths: [10, 16, 5]
+  disc_n_ffts: [64, 128, 32]
   causal: True
   # norm: 'weight_norm'
   norm: 'layer_norm'
   segment: None
   name: 'my_encodec'
-  bins: 256
+  bins: 512
 
 distributed:
   data_parallel: True

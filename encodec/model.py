@@ -199,19 +199,10 @@ class EncodecModel(nn.Module):
         if segment_length is None:
             assert len(encoded_frames) == 1
             return self._decode_frame(encoded_frames[0])
-        
-        # print("Number of frames to decode", len(encoded_frames))
 
         frames = [self._decode_frame(frame["codes"]) for frame in encoded_frames]
 
-        # print("Frames")
-        # print(frames)
-
         new_frames = _linear_overlap_add(frames, self.segment_stride or 1)
-
-        # print("New frames")
-        # print(new_frames)
-        # sys.exit()
 
         return new_frames
 
@@ -220,11 +211,7 @@ class EncodecModel(nn.Module):
         scale = encoded_frame['scale']
         codes = codes.transpose(0, 1)
         emb = self.quantizer.decode(codes)
-        # print("emb", emb)
-        # print("emb shape", emb.shape)
         out = self.decoder(emb)
-        # print("out", out)
-        # print("out shape", out.shape)
 
         # sys.exit()
         if scale is not None:

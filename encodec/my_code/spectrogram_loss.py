@@ -126,7 +126,7 @@ class ReconstructionLoss(nn.Module):
         Sx_hat_breathing_rate = torch.argmax(S_x_hat, dim=1) # (batch_size, num_frames)
 
         # compute the accuracy between the two
-        acc = torch.sum(Sx_breathing_rate == Sx_hat_breathing_rate) / Sx_breathing_rate.numel()
+        acc = torch.mean((Sx_breathing_rate == Sx_hat_breathing_rate).float())
 
         # Keep only the first half of the spectrogram (positive frequencies)
         S_x = S_x[:, :int(0.5/self.bin_freq), :]
