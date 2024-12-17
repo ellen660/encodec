@@ -25,7 +25,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import sys
-from my_code.spectrogram_loss import BreathingSpectrogram, ReconstructionLoss, ReconstructionLosses
+from my_code.spectrogram_loss import ReconstructionLoss, ReconstructionLosses
+
+import socket
 
 def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config, writer, freq_loss):
     """train one step function
@@ -234,27 +236,39 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
             S_x = S_x[:, :num_freq//2, :]
             S_x_hat = S_x_hat[:, :num_freq//2, :]
 
-            # plot x and the reconstructed x
-            fig, axs = plt.subplots(4, 1, figsize=(20, 10))
+            time_start = 0
+            time_end = x.shape[-1]
+            num_time_bins = S_x.shape[-1]
 
-            axs[0].plot(x[0].cpu().numpy().squeeze())
+            x_time = np.arange(time_start, time_end, 1)
+
+            # plot x and the reconstructed x
+            fig, axs = plt.subplots(4, 1, figsize=(20, 10), sharex=True)
+
+            axs[0].plot(x_time, x[0].cpu().numpy().squeeze())
             axs[0].set_title('Original')
             axs[0].set_ylim(-4, 4)
-            axs[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto')
+            axs[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, 5])
             axs[1].invert_yaxis()
             axs[1].set_title('Original Spectrogram')
 
-            axs[2].plot(x_hat[0].cpu().numpy().squeeze())
+            axs[2].plot(x_time, x_hat[0].cpu().numpy().squeeze())
             axs[2].set_title('Reconstructed')
             axs[2].set_ylim(-4, 4)
-            axs[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto')
+            axs[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, 5])
             axs[3].invert_yaxis()
             axs[3].set_title('Reconstructed Spectrogram')
 
             fig.tight_layout()
-            # fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
-            fig.savefig(f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{epoch}.png')
+            if user_name == 'ellen660':
+                fig.savefig(f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{epoch}.png')
+            elif user_name == 'chaoli':
+                fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
+            else:
+                raise Exception("User not recognized")
             plt.close(fig)
+
+            sys.exit()
 
     all_codes = torch.cat(all_codes, dim=0) # B, num_codebooks, T
     all_codes = torch.permute(all_codes, (1, 0, 2))
@@ -405,8 +419,14 @@ if __name__ == "__main__":
     curr_time = datetime.now().strftime("%Y%m%d")
     curr_min = datetime.now().strftime("%H%M%S")
 
-    # log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
-    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
+    user_name = os.getlogin()
+
+    if user_name == 'ellen660':
+        log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
+    elif user_name == 'chaoli':
+        log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
+    else:
+        raise Exception("User not recognized")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
         
