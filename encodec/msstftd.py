@@ -12,6 +12,7 @@ import torchaudio
 import torch
 from torch import nn
 from einops import rearrange
+import torch.nn.functional as F
 
 from modules import NormConv2d
 
@@ -43,7 +44,7 @@ class DiscriminatorSTFT(nn.Module):
         growth (int): Growth factor for the filters. Default: 1
     """
     def __init__(self, filters: int, in_channels: int = 1, out_channels: int = 1,
-                 n_fft: int = 64, hop_length: int = 10, win_length: int = 64, max_filters: int = 1024,
+                 n_fft: int = 1024, hop_length: int = 256, win_length: int = 1024, max_filters: int = 1024,
                  filters_scale: int = 1, kernel_size: tp.Tuple[int, int] = (3, 9), dilations: tp.List = [1, 2, 4],
                  stride: tp.Tuple[int, int] = (1, 2), normalized: bool = True, norm: str = 'weight_norm',
                  activation: str = 'LeakyReLU', activation_params: dict = {'negative_slope': 0.2}):
@@ -107,8 +108,8 @@ class MultiScaleSTFTDiscriminator(nn.Module):
         **kwargs: additional args for STFTDiscriminator
     """
     def __init__(self, filters: int, in_channels: int = 1, out_channels: int = 1,
-                 n_ffts: tp.List[int] = [64, 128, 32], hop_lengths: tp.List[int] = [10, 16, 5],
-                 win_lengths: tp.List[int] = [64, 128, 32], **kwargs):
+                 n_ffts: tp.List[int] = [300, 512, 1024], hop_lengths: tp.List[int] = [50, 128, 256],
+                 win_lengths: tp.List[int] = [300, 512, 1024], **kwargs):
         super().__init__()
         assert len(n_ffts) == len(hop_lengths) == len(win_lengths)
         self.discriminators = nn.ModuleList([
@@ -129,14 +130,32 @@ class MultiScaleSTFTDiscriminator(nn.Module):
 
 
 def test():
+
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     disc = MultiScaleSTFTDiscriminator(filters=32)
-    y = torch.randn(1, 1, 144000)
-    y_hat = torch.randn(1, 1, 144000)
+    disc.to(device)
+
+    batch_size = 4
+    time_steps = 10*60*60*4  # 4 hours of breathing at 10 Hz
+    y = torch.randn(batch_size, 1, time_steps, device=device, requires_grad=True)
+    y_hat = torch.randn(batch_size, 1, time_steps, device=device, requires_grad=True)
 
     y_disc_r, fmap_r = disc(y)
     y_disc_gen, fmap_gen = disc(y_hat)
     # breakpoint()
     assert len(y_disc_r) == len(y_disc_gen) == len(fmap_r) == len(fmap_gen) == disc.num_discriminators
+
+    #print devices
+    print(f"Device: {device}")
+    print(f"y_disc_r: {y_disc_r[0].device}")
+    print(f"fmap_r: {fmap_r[0][0].device}")
+    print(f"y_disc_gen: {y_disc_gen[0].device}")
+    print(f"fmap_gen: {fmap_gen[0][0].device}")
+    print(f'shapes')
+    print(f"y_disc_r: {y_disc_r[0].shape}")
+    print(f"fmap_r: {fmap_r[0][0].shape}")
+    print(f"y_disc_gen: {y_disc_gen[0].shape}")
+    print(f"fmap_gen: {fmap_gen[0][0].shape}")
 
     assert all([len(fm) == 5 for fm in fmap_r + fmap_gen])
     assert all([list(f.shape)[:2] == [1, 32] for fm in fmap_r + fmap_gen for f in fm])

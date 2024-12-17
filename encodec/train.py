@@ -56,7 +56,13 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
 
-        if config.model.train_discriminator:
+        train_discriminator = (
+            config.model.train_discriminator
+            and epoch >= config.model.train_discriminator_start_epoch
+            and random.random() < float(config.model.train_discriminator_prob)
+        )
+
+        if train_discriminator:
             logits_real, fmap_real = disc(x)
             logits_fake, fmap_fake = disc(x_hat)
         else:
@@ -96,7 +102,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         # loss = loss_l1 + loss_l2 + commit_loss + loss_f + loss_g + loss_feat
         loss = losses_g['l_t'] * config.loss.weight_l1 + commit_loss * config.loss.weight_commit + loss_f 
         
-        if config.model.train_discriminator:
+        if train_discriminator:
             loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
 
         optimizer.zero_grad()
@@ -109,13 +115,8 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         optimizer.step()
 
         # only update discriminator with probability from paper (configure)
-        if config.model.train_discriminator:
+        if train_discriminator:
             optimizer_disc.zero_grad()
-            train_discriminator = (
-                config.model.train_discriminator
-                and epoch >= config.lr_scheduler.warmup_epoch
-                and random.random() < float(config.model.train_discriminator_prob)
-            )
 
             logits_real, _ = disc(x)
             logits_fake, _ = disc(x_hat.detach()) # detach to avoid backpropagation to model
@@ -139,7 +140,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Frequency Accuracy': acc.item()}, 'train', epoch*len(train_loader) + i)
         
-        if config.model.train_discriminator:
+        if train_discriminator:
             logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'train', epoch*len(train_loader) + i)
             logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'train', epoch*len(train_loader) + i)
 
@@ -155,7 +156,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
     logger(writer, {'Learning Rate': optimizer.param_groups[0]['lr']}, 'train', epoch)
     scheduler.step()
 
-    if config.model.train_discriminator:
+    if train_discriminator:
         disc_scheduler.step()
 
     loss_per_epoch = epoch_loss/len(train_loader)
@@ -168,7 +169,11 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
 @torch.no_grad()
 def test(epoch, model, disc, val_loader, config, writer, freq_loss):
     model.eval()
-    if config.model.train_discriminator:
+    train_discriminator = (
+        config.model.train_discriminator
+        and epoch >= config.model.train_discriminator_start_epoch
+    )
+    if train_discriminator:
         disc.eval()
     epoch_loss = 0
     all_codes = []
@@ -176,7 +181,7 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
 
-        if config.model.train_discriminator:
+        if train_discriminator:
             logits_real, fmap_real = disc(x)
             logits_fake, fmap_fake = disc(x_hat)
         else:
@@ -194,7 +199,7 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
                 x_hat, 
                 sample_rate=10,
             )
-        if config.model.train_discriminator:
+        if train_discriminator:
             loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss
 
         loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
@@ -207,7 +212,7 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         # loss = loss_l1 + loss_l2 + commit_loss + loss_f + loss_g + loss_feat + loss_disc
         loss = losses_g['l_t'] * config.loss.weight_l1 + losses_g['l_t_2'] * config.loss.weight_l2 + commit_loss * config.loss.weight_commit + loss_f 
         
-        if config.model.train_discriminator:
+        if train_discriminator:
             loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
             epoch_loss += loss_disc.item()
 
@@ -223,7 +228,7 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'val', epoch*len(train_loader) + i)
         logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'val', epoch*len(train_loader) + i)
         logger(writer, {'Frequency Accuracy': acc.item()}, 'val', epoch*len(train_loader) + i)
-        if config.model.train_discriminator:
+        if train_discriminator:
             logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'val', epoch*len(val_loader) + i)
             logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'val', epoch*len(val_loader) + i)
             logger(writer, {'Loss Discriminator': loss_disc.item()}, 'val', epoch*len(val_loader) + i)
@@ -396,7 +401,8 @@ def init_model(config):
 
     # log model, disc model parameters and train mode
     # print(model)
-    # print(disc_model)
+    print(disc_model)
+    breakpoint()
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
     print(f"disc model train mode :{disc_model.training}")
     total_params = sum(p.numel() for p in model.parameters())
@@ -451,7 +457,7 @@ if __name__ == "__main__":
 
     if data_parallel:
         model = nn.DataParallel(model)
-        # disc = nn.DataParallel(disc)
+        disc = nn.DataParallel(disc)
     
     optimizer = optim.AdamW(model.parameters(), lr=float(config.optimization.lr), betas=(0.8, 0.9))
     if config.model.train_discriminator:

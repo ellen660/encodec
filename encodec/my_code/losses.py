@@ -65,7 +65,7 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
     # l_feat = \sum |D_k^l(x) - D_k^l(\hat x)| / |D_k^l(x)| / KL, KL = len(fmap_real[0])*len(fmap_real)=3 * 5
 
     if fmap_real is not None:
-        for tt1 in range(len(fmap_real)): # len(fmap_real) = 3
+        for tt1 in range(len(fmap_real)): # len(fmap_real) = 1 for now
             l_g = l_g + torch.mean(relu(1 - logits_fake[tt1])) / len(logits_fake)
             for tt2 in range(len(fmap_real[tt1])): # len(fmap_real[tt1]) = 5
                 # l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2].detach()))
