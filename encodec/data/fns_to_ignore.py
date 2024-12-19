@@ -1,1 +1,1 @@
-fns_to_ignore = ["shhs1-200033.npz", "wsc-visit4-28237-nsrr.npz"]
+fns_to_ignore = ["shhs1-200033.npz", "mros-visit1-aa1324.npz", "wsc-visit4-28237-nsrr.npz"]

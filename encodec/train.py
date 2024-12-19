@@ -401,6 +401,7 @@ def init_dataset(config):
         weight_list.append(config.dataset.cfs)
 
     print("Number of training datasets: ", len(train_datasets))
+    # sys.exit()
 
     # merge the datasets
     train_dataset = MergedDataset(train_datasets, weight_list, 1, debug = config.dataset.debug)

@@ -2,6 +2,7 @@
 #return the raw breathing, support deubgging
 
 import os
+import sys
 import torch
 import pandas as pd
 import numpy as np
@@ -25,7 +26,11 @@ class BreathingDataset(Dataset):
 
         # dataset preparation
         # file_list = sorted([f for f in os.listdir(self.ds_dir) if f.endswith('.npz') if self.filter_files(f)])
-        file_list = sorted([f for f in os.listdir(self.ds_dir) if f.endswith('.npz') and f not in fns_to_ignore])
+        file_list = sorted([f for f in os.listdir(self.ds_dir) if f.endswith('.npz')])
+        len_before = len(file_list)
+        file_list = [f for f in file_list if f not in fns_to_ignore]
+        len_after = len(file_list)
+        print(f"Filtered out {len_before - len_after} files")
         train_list, val_list = self.split_train_test(file_list)
 
         if mode == "train":
@@ -71,14 +76,21 @@ class BreathingDataset(Dataset):
     def __getitem__(self, idx):
         filename = self.file_list[idx]
         filepath = os.path.join(self.ds_dir, filename)
-        breathing, fs = np.load(filepath)['data'], np.load(filepath)['fs']
+        breathing = np.load(filepath)['data'].squeeze()
+        fs = np.load(filepath)['fs']
         # print(f'breathing shape: {breathing.shape}, fs: {fs}')
         assert fs == 10, "Sampling rate is not 10Hz"
 
         # TODO: randomly sample a start time
         breathing_length = breathing.shape[0] - self.max_length
-        #randomly sample start index 
-        start_idx = np.random.randint(0, breathing_length)
+        #randomly sample start index
+        try:
+            start_idx = np.random.randint(0, breathing_length)
+        except:
+            print("breathing_length is negative")
+            print(f"breathing_length: {breathing_length}")
+            print("filename: ", filename)
+            sys.exit()
         # print(f"start_idx: {start_idx}")
         breathing = breathing[start_idx:start_idx+self.max_length]
         # breathing = breathing[:self.max_length] #4 hours

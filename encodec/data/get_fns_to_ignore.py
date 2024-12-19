@@ -25,11 +25,11 @@ for ds in datasets:
     for fn in tqdm(fns):
         filepath = os.path.join(data_dir, fn)
         breathing = np.load(filepath)['data']
-        if breathing.shape[0] < max_length:
+        if breathing.shape[0] <= max_length:
             fns_to_ignore.append(fn)
             print(f"ignoring {fn}")
             # break
 
 # save filenames to ignore to a .py file
 with open("fns_to_ignore.py", "w") as f:
-    f.write(f"filenames = {json.dumps(fns_to_ignore)}")
+    f.write(f"fns_to_ignore = {json.dumps(fns_to_ignore)}")
