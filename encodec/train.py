@@ -116,6 +116,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
 
         # only update discriminator with probability from paper (configure)
         if train_discriminator:
+            print('train discriminator')
             optimizer_disc.zero_grad()
 
             logits_real, _ = disc(x)
@@ -398,8 +399,7 @@ def init_model(config):
 
     # log model, disc model parameters and train mode
     # print(model)
-    print(disc_model)
-    breakpoint()
+    # print(disc_model)
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
     print(f"disc model train mode :{disc_model.training}")
     total_params = sum(p.numel() for p in model.parameters())
