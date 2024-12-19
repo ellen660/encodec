@@ -83,16 +83,21 @@ class BreathingDataset(Dataset):
 
         # TODO: randomly sample a start time
         breathing_length = breathing.shape[0] - self.max_length
-        #randomly sample start index
-        try:
-            start_idx = np.random.randint(0, breathing_length)
-        except:
-            print("breathing_length is negative")
-            print(f"breathing_length: {breathing_length}")
-            print("filename: ", filename)
-            sys.exit()
-        # print(f"start_idx: {start_idx}")
-        breathing = breathing[start_idx:start_idx+self.max_length]
+        
+        if self.mode == "train":    
+            #randomly sample start index
+            try:
+                start_idx = np.random.randint(0, breathing_length)
+            except:
+                print("breathing_length is negative")
+                print(f"breathing_length: {breathing_length}")
+                print("filename: ", filename)
+                print(f"start_idx: {start_idx}")
+                sys.exit()
+            breathing = breathing[start_idx:start_idx+self.max_length]
+        else:
+            breathing = breathing[:self.max_length]
+
         # breathing = breathing[:self.max_length] #4 hours
         breathing = self.process_signal(breathing, fs)
         breathing = torch.tensor(breathing, dtype=torch.float32)
