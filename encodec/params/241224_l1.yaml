@@ -1,7 +1,7 @@
 exp_details:
-  name: 'config'
+  name: '241224_l1'
   description: '4 hours at 10 hz'
-  date: '2024-12-13'
+  date: '2024-12-14'
 
 common:
   save_interval: 2
@@ -16,21 +16,14 @@ dataset:
   batch_size: 8
   max_length: 144000 # 4 hours at 10 hz
   num_workers: 4
-  debug: True
-  cv: 0
-  shhs1: 1.
-  shhs2: 1.
-  mros1: 1.
-  mros2: 0.
-  wsc: 1.
-  cfs: 1.
+  debug: False
 
 checkpoint:
   save: False
   save_every: 50
 
 optimization:
-  lr: 1e-5
+  lr: 1e-4
   weight_decay: 1e-6
   disc_lr: 3e-4
 
@@ -56,7 +49,7 @@ model:
   audio_normalize: False
   filters: 32
   # ratios: [8, 5, 4, 2] #320 downsampling 
-  ratios: [5, 5, 2, 1] # 10 downsampling
+  ratios: [5, 5, 4, 1] # 10 downsampling
   disc_win_lengths: [64, 128, 32]
   disc_hop_lengths: [10, 16, 5]
   disc_n_ffts: [64, 128, 32]
@@ -65,7 +58,7 @@ model:
   norm: 'layer_norm'
   segment: None
   name: 'my_encodec'
-  bins: 512
+  bins: 1024
 
 distributed:
   data_parallel: True

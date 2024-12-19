@@ -1,5 +1,6 @@
 from model import EncodecModel
-from my_code.dataset import BreathingDataset
+from data import MergedDataset
+from data.dataset import BreathingDataset
 from my_code.losses import loss_fn_l1, loss_fn_l2, total_loss, disc_loss
 from my_code.schedulers import LinearWarmupCosineAnnealingLR, WarmupScheduler
 from msstftd import MultiScaleSTFTDiscriminator
@@ -241,6 +242,10 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
             S_x = S_x[:, :num_freq//2, :]
             S_x_hat = S_x_hat[:, :num_freq//2, :]
 
+            # use this to set the scale of the spectrogram
+            min_spec_val = min(S_x.min(), S_x_hat.min())
+            max_spec_val = max(S_x.max(), S_x_hat.max())
+
             time_start = 0
             time_end = x.shape[-1]
 
@@ -252,14 +257,14 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
             axs[0].plot(x_time, x[0].cpu().numpy().squeeze())
             axs[0].set_title('Original')
             axs[0].set_ylim(-4, 4)
-            axs[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, 5])
+            axs[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, num_freq//2], vmin=min_spec_val, vmax=max_spec_val)
             axs[1].invert_yaxis()
             axs[1].set_title('Original Spectrogram')
 
             axs[2].plot(x_time, x_hat[0].cpu().numpy().squeeze())
             axs[2].set_title('Reconstructed')
             axs[2].set_ylim(-4, 4)
-            axs[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, 5])
+            axs[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, num_freq//2], vmin=min_spec_val, vmax=max_spec_val)
             axs[3].invert_yaxis()
             axs[3].set_title('Reconstructed Spectrogram')
 
@@ -367,13 +372,43 @@ def init_logger(log_dir):
     return writer
 
 def init_dataset(config):
-    #dataset
-    dataset = BreathingDataset(debug = config.dataset.debug, max_length = config.dataset.max_length)
-    train_size = int(0.8 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+    train_datasets = []
+    val_datasets = []
+    weight_list = []
+    if config.dataset.shhs2 > 0:
+        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        weight_list.append(config.dataset.shhs2)
+    if config.dataset.shhs1 > 0:
+        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        weight_list.append(config.dataset.shhs1)
+    if config.dataset.mros1 > 0:
+        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        weight_list.append(config.dataset.mros1)
+    if config.dataset.mros2 > 0:
+        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        weight_list.append(config.dataset.mros2)
+    if config.dataset.wsc > 0:
+        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        weight_list.append(config.dataset.wsc)
+    if config.dataset.cfs > 0:
+        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "cfs", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        weight_list.append(config.dataset.cfs)
+
+    print("Number of training datasets: ", len(train_datasets))
+
+    # merge the datasets
+    train_dataset = MergedDataset(train_datasets, weight_list, 1, debug = config.dataset.debug)
+    val_dataset = MergedDataset(val_datasets, weight_list, 0.2, debug = config.dataset.debug)
+
     train_loader = DataLoader(train_dataset, batch_size=config.dataset.batch_size, shuffle=True, num_workers=config.dataset.num_workers)
     val_loader = DataLoader(val_dataset, batch_size=config.dataset.batch_size, shuffle=False, num_workers=config.dataset.num_workers)
+
     return train_loader, val_loader
 
 def init_model(config):
@@ -399,7 +434,7 @@ def init_model(config):
     # log model, disc model parameters and train mode
     # print(model)
     print(disc_model)
-    breakpoint()
+    # breakpoint()
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
     print(f"disc model train mode :{disc_model.training}")
     total_params = sum(p.numel() for p in model.parameters())
@@ -490,10 +525,12 @@ if __name__ == "__main__":
         if epoch % config.checkpoint.save_every == 0:
             if config.distributed.data_parallel:
                 torch.save(model.module.state_dict(), f"{log_dir}/model.pth")
-                torch.save(disc.module.state_dict(), f"{log_dir}/disc.pth")
+                if config.model.train_discriminator:
+                    torch.save(disc.module.state_dict(), f"{log_dir}/disc.pth")
             else:
                 torch.save(model.state_dict(), f"{log_dir}/model.pth")
-                torch.save(disc.state_dict(), f"{log_dir}/disc.pth")
+                if config.model.train_discriminator:
+                    torch.save(disc.state_dict(), f"{log_dir}/disc.pth")
             # model_to_save = model.module if config.distributed.data_parallel else model
             # disc_model_to_save = disc.module if config.distributed.data_parallel else disc
 

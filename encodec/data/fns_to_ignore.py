@@ -1,0 +1,1 @@
+fns_to_ignore = ["shhs1-200033.npz", "wsc-visit4-28237-nsrr.npz"]
