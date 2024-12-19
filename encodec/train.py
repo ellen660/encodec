@@ -47,8 +47,8 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         warmup_scheduler (_type_): warmup learning rate
     """
     model.train()
-    
-    if config.model.train_discriminator:
+
+    if config.model.train_discriminator and epoch >= config.model.train_discriminator_start_epoch:
         disc.train()
 
     epoch_loss = 0
@@ -57,13 +57,19 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
 
+        train_generator = (
+            config.model.train_discriminator
+            and epoch >= config.model.train_discriminator_start_epoch
+        )
+
+        offset_prob = 1. - float(config.model.train_discriminator_prob) if epoch - config.model.train_discriminator_start_epoch < 10 else 0.0
         train_discriminator = (
             config.model.train_discriminator
             and epoch >= config.model.train_discriminator_start_epoch
-            and random.random() < float(config.model.train_discriminator_prob)
+            and random.random() < float(config.model.train_discriminator_prob) + offset_prob
         )
 
-        if train_discriminator:
+        if train_generator and not train_discriminator:
             logits_real, fmap_real = disc(x)
             logits_fake, fmap_fake = disc(x_hat)
         else:
@@ -103,7 +109,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         # loss = loss_l1 + loss_l2 + commit_loss + loss_f + loss_g + loss_feat
         loss = losses_g['l_t'] * config.loss.weight_l1 + commit_loss * config.loss.weight_commit + loss_f 
         
-        if train_discriminator:
+        if train_generator and not train_discriminator:
             loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
 
         optimizer.zero_grad()
@@ -117,6 +123,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
 
         # only update discriminator with probability from paper (configure)
         if train_discriminator:
+            # if random.random() < float(config.model.train_discriminator_prob):
             print('train discriminator')
             optimizer_disc.zero_grad()
 
@@ -125,9 +132,19 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
             loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss\
             # print(f'loss device: {loss_disc.device}')
             loss_disc.backward() 
+
+            if config.common.gradient_clipping:
+                nn.utils.clip_grad_norm_(disc.parameters(), 10)
+
             optimizer_disc.step()
             logger(writer, {'Loss Discriminator': loss_disc.item()}, 'train', epoch*len(train_loader) + i)
             epoch_loss += loss_disc.item()
+
+            max_disc_gradient = torch.tensor(0.0).to(device)
+            for param in disc.parameters():
+                if param.grad is not None:
+                    max_disc_gradient = max(max_disc_gradient, param.grad.abs().max().item())
+            logger(writer, {'Max Discriminator Gradient': max_disc_gradient}, 'train', epoch*len(train_loader) + i)
 
         epoch_loss += loss.item()
 
@@ -142,7 +159,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'train', epoch*len(train_loader) + i)
         logger(writer, {'Frequency Accuracy': acc.item()}, 'train', epoch*len(train_loader) + i)
         
-        if train_discriminator:
+        if train_generator and not train_discriminator:
             logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'train', epoch*len(train_loader) + i)
             logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'train', epoch*len(train_loader) + i)
 
@@ -156,7 +173,7 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
 
     # log the learning rate
     logger(writer, {'Learning Rate': optimizer.param_groups[0]['lr']}, 'train', epoch)
-    scheduler.step()
+    scheduler.step()  
 
     if train_discriminator:
         disc_scheduler.step()
