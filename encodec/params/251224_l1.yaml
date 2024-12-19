@@ -1,7 +1,7 @@
 exp_details:
-  name: 'config'
+  name: '251224_l1'
   description: '4 hours at 10 hz'
-  date: '2024-12-13'
+  date: '2024-12-14'
 
 common:
   save_interval: 2
@@ -16,12 +16,12 @@ dataset:
   batch_size: 8
   max_length: 144000 # 4 hours at 10 hz
   num_workers: 4
-  debug: True
+  debug: False
   cv: 0
   shhs1: 1.
   shhs2: 1.
   mros1: 1.
-  mros2: 0.
+  mros2: 1.
   wsc: 1.
   cfs: 1.
 
@@ -30,7 +30,7 @@ checkpoint:
   save_every: 50
 
 optimization:
-  lr: 1e-5
+  lr: 3e-4
   weight_decay: 1e-6
   disc_lr: 3e-4
 
