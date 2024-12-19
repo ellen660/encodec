@@ -94,7 +94,8 @@ if __name__ == "__main__":
 
     args = set_args()
 
-    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241216/233026'
+    # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241216/233026'
+    log_dir = "../tensorboard/231224_l1"
         
     # Load the YAML file
     config = load_config(f'{log_dir}/config.yaml', log_dir)
@@ -124,6 +125,9 @@ if __name__ == "__main__":
     print("Loading model and discriminator from checkpoint...")
     checkpoint_model = torch.load(checkpoint_path_model, map_location=device)
     # checkpoint_disc = torch.load(checkpoint_path_disc, map_location=device)
+
+
+    sys.exit()
 
     # Load state_dict into model and discriminator
     # if config.distributed.data_parallel:

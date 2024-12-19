@@ -53,6 +53,8 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
 
     epoch_loss = 0
     for i, (x, _) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
+        if x is None:
+            continue
         # print(f'x shape: {x.shape}')
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
@@ -180,6 +182,8 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
     epoch_loss = 0
     all_codes = []
     for i, (x, _) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
+        if x is None:
+            continue
         x = x.to(device)
         x_hat, codes, commit_loss = model(x)
 
@@ -402,7 +406,6 @@ def init_dataset(config):
         weight_list.append(config.dataset.cfs)
 
     print("Number of training datasets: ", len(train_datasets))
-    # sys.exit()
 
     # merge the datasets
     train_dataset = MergedDataset(train_datasets, weight_list, 1, debug = config.dataset.debug)

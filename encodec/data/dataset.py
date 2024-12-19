@@ -26,11 +26,16 @@ class BreathingDataset(Dataset):
 
         # dataset preparation
         # file_list = sorted([f for f in os.listdir(self.ds_dir) if f.endswith('.npz') if self.filter_files(f)])
-        file_list = sorted([f for f in os.listdir(self.ds_dir) if f.endswith('.npz')])
-        len_before = len(file_list)
-        file_list = [f for f in file_list if f not in fns_to_ignore]
+        file_list_before = sorted([f for f in os.listdir(self.ds_dir) if f.endswith('.npz')])
+        len_before = len(file_list_before)
+        file_list = [f for f in file_list_before if f not in fns_to_ignore]
         len_after = len(file_list)
         print(f"Filtered out {len_before - len_after} files")
+
+        # # get the set difference
+        # file_diff = set(file_list_before) - set(file_list)
+        # print(f"file_diff: {file_diff}")
+
         train_list, val_list = self.split_train_test(file_list)
 
         if mode == "train":
@@ -69,7 +74,7 @@ class BreathingDataset(Dataset):
 
         if fs != 10:
             signal = zoom(signal, 10/fs)
-            fs = 8
+            fs = 10
 
         return signal
 
@@ -80,11 +85,9 @@ class BreathingDataset(Dataset):
         fs = np.load(filepath)['fs']
         # print(f'breathing shape: {breathing.shape}, fs: {fs}')
         assert fs == 10, "Sampling rate is not 10Hz"
-
-        # TODO: randomly sample a start time
-        breathing_length = breathing.shape[0] - self.max_length
         
-        if self.mode == "train":    
+        if self.mode == "train":
+            breathing_length = breathing.shape[0] - self.max_length
             #randomly sample start index
             try:
                 start_idx = np.random.randint(0, breathing_length)
@@ -101,6 +104,10 @@ class BreathingDataset(Dataset):
         # breathing = breathing[:self.max_length] #4 hours
         breathing = self.process_signal(breathing, fs)
         breathing = torch.tensor(breathing, dtype=torch.float32)
+
+        # if there is any nan or inf in the signal, return None
+        if torch.isnan(breathing).any() or torch.isinf(breathing).any():
+            return None, 0
 
         #clip breathing -6,6
 
