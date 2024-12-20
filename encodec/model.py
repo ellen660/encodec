@@ -182,6 +182,7 @@ class EncodecModel(nn.Module):
         # codes is [B, K, T], with T frames, K nb of codebooks.
 
         encoded_frame = {
+            'quantized': quantized_result.quantized,
             'codes': codes,
             'commit_loss': quantized_result.commit_loss,
             'scale': scale,
@@ -200,18 +201,26 @@ class EncodecModel(nn.Module):
             assert len(encoded_frames) == 1
             return self._decode_frame(encoded_frames[0])
 
-        frames = [self._decode_frame(frame["codes"]) for frame in encoded_frames]
+        # frames = [self._decode_frame(frame["codes"]) for frame in encoded_frames]
+        frames = [self._decode_frame(frame) for frame in encoded_frames]
 
         new_frames = _linear_overlap_add(frames, self.segment_stride or 1)
 
         return new_frames
 
     def _decode_frame(self, encoded_frame: EncodedFrame) -> torch.Tensor:
-        codes = encoded_frame['codes']
+        # codes = encoded_frame['codes']
         scale = encoded_frame['scale']
-        codes = codes.transpose(0, 1)
-        emb = self.quantizer.decode(codes)
-        out = self.decoder(emb)
+        # codes = codes.transpose(0, 1)
+        # emb = self.quantizer.decode(codes)
+        # out = self.decoder(emb)
+
+        out = self.decoder(encoded_frame['quantized'])
+        # print(f'out2: {out2.shape}')
+        # print(f'out: {out.shape}')
+
+        # print(f'out - out2: {torch.sum(out - out2)}')
+        # sys.exit()
 
         # sys.exit()
         if scale is not None:
