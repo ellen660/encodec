@@ -26,6 +26,8 @@
 
 # python3 encodec/train.py --exp_name 241224_l1 &
 
-python3 encodec/train.py --exp_name 251224_l1 &
+# python3 encodec/train.py --exp_name 251224_l1 &
 
-python3 encodec/train.py --exp_name 261224_l1 &
+# python3 encodec/train.py --exp_name 261224_l1 &
+
+python3 encodec/train.py --exp_name 271224_l1 &

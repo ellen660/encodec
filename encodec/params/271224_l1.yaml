@@ -1,0 +1,77 @@
+exp_details:
+  name: '271224_l1'
+  description: '4 hours at 10 hz'
+  date: '2024-12-14'
+
+common:
+  save_interval: 2
+  test_interval: 5
+  log_interval: 1
+  max_epoch: 200
+  seed: 42
+  gradient_clipping: True
+  # amp: False
+
+dataset:
+  batch_size: 8
+  max_length: 144000 # 4 hours at 10 hz
+  num_workers: 4
+  debug: False
+  cv: 0
+  shhs1: 1.
+  shhs2: 1.
+  mros1: 1.
+  mros2: 1.
+  wsc: 1.
+  cfs: 1.
+
+checkpoint:
+  save: False
+  save_every: 50
+
+optimization:
+  lr: 1e-4
+  weight_decay: 1e-6
+  disc_lr: 3e-4
+
+loss:
+  weight_l1: 1.
+  weight_l2: 0.
+  weight_commit: 0.
+  weight_freq: 0.25
+  weight_g: 3.
+  weight_feat: 3.
+  alpha: 0.01
+  bandwidth: null
+  n_fft: 1024 # 300 then 512 then 1024
+  hop_length: [64, 50, 128, 256]
+  win_length: [256, 300, 512, 1024]
+
+lr_scheduler:
+  warmup_epoch: 10
+
+model:
+  target_bandwidths: [0.08] #0.1 is 10 codebooks, 0.2 is 20 codebooks
+  sample_rate: 10
+  channels: 1
+  train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
+  train_discriminator_start_epoch: 100
+  train_discriminator_prob: 0.5
+  audio_normalize: False
+  filters: 32
+  # ratios: [8, 5, 4, 2] #320 downsampling 
+  ratios: [5, 5, 2, 1] # 10 downsampling
+  # ratios: [6,5,5,2,1] # 300 downsampling 
+  disc_win_lengths: [300]
+  disc_hop_lengths: [50]
+  disc_n_ffts: [512]
+  causal: True
+  # norm: 'weight_norm'
+  norm: 'layer_norm'
+  segment: None
+  name: 'my_encodec'
+  bins: 512
+
+distributed:
+  data_parallel: True
+  world_size: 8 

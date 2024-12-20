@@ -42,6 +42,8 @@ class BreathingDataset(Dataset):
             self.file_list = train_list
         elif mode == "val":
             self.file_list = val_list
+        elif mode == "test":
+            self.file_list = val_list
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
@@ -98,16 +100,27 @@ class BreathingDataset(Dataset):
                 print(f"start_idx: {start_idx}")
                 sys.exit()
             breathing = breathing[start_idx:start_idx+self.max_length]
-        else:
+        elif self.mode == "val":
             breathing = breathing[:self.max_length]
+        elif self.mode == "test":
+            breathing = breathing
+        else:
+            raise ValueError(f"Invalid mode: {self.mode}")
 
         # breathing = breathing[:self.max_length] #4 hours
         breathing = self.process_signal(breathing, fs)
         breathing = torch.tensor(breathing, dtype=torch.float32)
 
+        item = {
+            "x": None,
+            "y": 0,
+            "filename": filename
+        }
+
         # if there is any nan or inf in the signal, return None
         if torch.isnan(breathing).any() or torch.isinf(breathing).any():
-            return None, 0
+            # return None, 0
+            return item
 
         #clip breathing -6,6
 
@@ -119,7 +132,9 @@ class BreathingDataset(Dataset):
 
         #unsquzze dim0
         breathing = breathing.unsqueeze(0)
-        return breathing, 0
+        item["x"] = breathing
+
+        return item
 
 # def main():
 #     dataset = BreathingDataset()

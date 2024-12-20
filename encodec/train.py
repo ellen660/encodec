@@ -52,7 +52,8 @@ def train_one_step(epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, 
         disc.train()
 
     epoch_loss = 0
-    for i, (x, _) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
+    for i, item in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
+        x = item["x"]
         if x is None:
             continue
         # print(f'x shape: {x.shape}')
@@ -198,7 +199,8 @@ def test(epoch, model, disc, val_loader, config, writer, freq_loss):
         disc.eval()
     epoch_loss = 0
     all_codes = []
-    for i, (x, _) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
+    for i, item in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
+        x = item["x"]
         if x is None:
             continue
         x = x.to(device)
