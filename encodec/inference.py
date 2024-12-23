@@ -5,13 +5,10 @@ import torch.nn as nn
 
 from model import EncodecModel
 from data.dataset import BreathingDataset
-from my_code.losses import loss_fn_l1, loss_fn_l2, total_loss, disc_loss
 
 import torch
-import torch.optim as optim
 import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
-from torch.utils.tensorboard import SummaryWriter
 import yaml
 # Define train one step function
 from tqdm import tqdm
@@ -71,30 +68,25 @@ if __name__ == "__main__":
 
     # log_dir = "tensorboard/231224_l1"
     # log_dir = "tensorboard/261224_l1"
-    log_dir = "tensorboard/271224_l1"
+    # log_dir = "tensorboard/271224_l1"
+    
+    log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_5s"
     save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions"
         
     # Load the YAML file
     config = load_config(f'{log_dir}/config.yaml', log_dir)
 
     device = torch.device("cuda")
-    torch.manual_seed(config.common.seed)
 
     # Initialize model and discriminator
-    val_ds = BreathingDataset(dataset="shhs2_new", mode="test", cv=0, channel="thorax", max_length=config.dataset.max_length)
-    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=config.dataset.num_workers)
+    val_ds = BreathingDataset(dataset="shhs2_new", mode="test", cv=0, channel="thorax", max_length=None)
+    val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4)
 
     model = init_model(config)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Move to device
     model = model.to(device)
-    # disc = disc.to(device)
-
-    # # Data Parallel if enabled
-    # if config.distributed.data_parallel:
-    #     model = nn.DataParallel(model)
-    #     disc = nn.DataParallel(disc)
 
     # Checkpoint path (set this to your specific checkpoint)
     checkpoint_path_model = f"{log_dir}/model.pth"
