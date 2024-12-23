@@ -70,7 +70,8 @@ def init_model(config):
 if __name__ == "__main__":
 
     # log_dir = "tensorboard/231224_l1"
-    log_dir = "tensorboard/261224_l1"
+    # log_dir = "tensorboard/261224_l1"
+    log_dir = "tensorboard/271224_l1"
     save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions"
         
     # Load the YAML file
