@@ -252,7 +252,7 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
             'Loss Frequency L1': loss_f_l1.item(),
             'Loss Frequency L2': loss_f_l2.item(),
             'Frequency Accuracy': acc.item()
-        }, epoch*len(train_loader) + i)
+        }, epoch*len(val_loader) + i)
         # logger(writer, {'Loss per step': loss.item()}, 'val', epoch*len(train_loader) + i)
         # logger(writer, {'Loss Frequency': loss_f.item()}, 'val', epoch*len(train_loader) + i)
         # logger(writer, {'Loss L1': losses_g['l_t'].item()}, 'val', epoch*len(train_loader) + i)
