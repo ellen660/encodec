@@ -55,6 +55,7 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
     #time domain loss, output_wav is the output of the generator
     l_t = l1Loss(input_wav, output_wav) 
     l_t_2 = l2Loss(input_wav, output_wav)
+    sigmoid = torch.nn.Sigmoid()
 
     #frequency domain loss, window length is 2^i, hop length is 2^i/4, i \in [5,11]. combine l1 and l2 loss
     # for i in range(5, 12): #e=5,...,11
@@ -67,11 +68,19 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
 
     if fmap_real is not None:
         for tt1 in range(len(fmap_real)): # len(fmap_real) = num discriminators 
-            l_g = l_g + torch.mean(relu(1 - logits_fake[tt1])) #/ len(logits_fake)
+            # print(f'generator logits_fake: {torch.mean(logits_fake[tt1])}')
+            # l_g = l_g + torch.mean(relu(1 - logits_fake[tt1])) #/ len(logits_fake) #min is 0 if logits_fake is 1
+            #our own 
+            # l_g = l_g + torch.mean(relu(1-sigmoid(logits_fake[tt1]))) / len(logits_fake)
+                # 0 .2 means logits_fake is -0.8
+
+            l_g = l_g + torch.mean((1 - logits_fake[tt1]) ** 2)  
+                #min is 0 if logits_fake is 1
+                #logits_fake 0.48 means l_g is 0.52
             for tt2 in range(len(fmap_real[tt1])): # len(fmap_real[tt1]) = 5
-                # l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2].detach()))
+                l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2].detach()))
                 # l_feat = l_feat + l1Loss(fmap_real[tt1][tt2], fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2]))
-                l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2]))
+                # l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2]))
 
         KL_scale = len(fmap_real)*len(fmap_real[0]) # len(fmap_real) == len(fmap_fake) == len(logits_real) == len(logits_fake) == disc.num_discriminators == K
         l_feat /= KL_scale
@@ -96,16 +105,85 @@ def disc_loss(logits_real, logits_fake):
     """This function is used to compute the loss of the discriminator.
         l_d = \sum max(0, 1 - D_k(x)) + max(0, 1 + D_k(\hat x)) / K, K = disc.num_discriminators = len(logits_real) = len(logits_fake) = 3
     Args:
-        logits_real (List[torch.Tensor]): logits_real = disc_model(input_wav)[0]
+        logits_real (List[torch.Tensor]): 
+            B x 1 x T x filters*2
+            logits_real = disc_model(input_wav)[0]  
         logits_fake (List[torch.Tensor]): logits_fake = disc_model(model(input_wav)[0])[0]
 
     Returns:
         lossd: discriminator loss
     """
     relu = torch.nn.ReLU()
+    sigmoid = torch.nn.Sigmoid()
     # lossd = torch.tensor([0.0], device='cuda', requires_grad=True)
-    lossd = 0
-    for tt1 in range(len(logits_real)):
-        lossd = lossd + torch.mean(relu(1-logits_real[tt1])) + torch.mean(relu(1+logits_fake[tt1]))
-    lossd = lossd / len(logits_real)
-    return lossd
+    loss_d = 0
+    for tt1 in range(len(logits_real)): #[1,1, T, filters*2]
+
+        # print(f'real: {torch.mean(relu(1-logits_real[tt1]))}') #1.4 means logits_real is -0.4, 0 means logits_real is 1
+        #     #min 0 if logits_real is 1
+        # print(f'fake: {torch.mean(relu(1+logits_fake[tt1]))}') #0.3 means logits_fake is -0.7
+            #min 0 if logits_fake is 0
+        # loss_d = loss_d + torch.mean(relu(1-logits_real[tt1])) + torch.mean(relu(1+logits_fake[tt1]))
+        # print(f'real: {torch.mean(logits_real[tt1])}') #0 means logits_real is 1
+        # print(f'fake: {torch.mean(logits_fake[tt1])}') #0 means logits_fake is 0
+
+        # loss_d = loss_d + torch.mean(relu(1-logits_real[tt1])) + torch.mean(relu(1+logits_fake[tt1])) #Encodec
+            # real: 1.4854092597961426  #1.4 means logits_real is -0.4, 0 means logits_real is 1
+            # fake: 0.3382878005504608  #0.3 means logits_fake is -0.7
+            # real: 1.5711915493011475
+            # fake: 0.2277427315711975
+        # loss_d = loss_d + torch.mean(relu(1-sigmoid(logits_real[tt1]))) + torch.mean(relu(sigmoid(logits_fake[tt1]))) #our own?
+            # real: 143.40602111816406  #0 and 1
+            # fake: 142.12840270996094
+            # real: 296.2453918457031
+            # fake: 290.69921875
+        
+        # loss_d = loss_d + torch.mean(relu(1-logits_real[tt1])) + torch.mean(relu(logits_fake[tt1])) #without sigmoid and 1+
+            # real: 0.1342935413122177
+            # fake: 0.10814659297466278
+            # real: 0.22330671548843384
+            # fake: 0.19009989500045776
+
+            #after training for longer until l_d= 0.6
+            # real: 0.11632872372865677
+            # fake: 0.09444870799779892
+            # real: 0.8395664095878601
+            # fake: 0.059129368513822556
+
+        loss_d = loss_d + torch.mean(logits_fake[tt1] ** 2) + torch.mean((1 - logits_real[tt1]) ** 2) #DAC
+        #Cross Entropy value error
+    
+            # real: 0.5131673812866211, 0.25577738881111145
+            # fake: 0.4625246226787567, 0.21392902731895447
+            # real: 0.5093390941619873, 0.24603983759880066
+            # fake: 0.46865516901016235, 0.2196376621723175
+    loss_d = loss_d / len(logits_real)
+    return loss_d
+
+#Ok so previously the discriminator was making logits_fake -0.7 ish, logits_real -0.4 ish which works  in that it discriminator loss goes down BUT 
+#it got stuck once the generator loss kicked it because generator loss wants logits_fake to be 1 (>0) at least, and so it does do that.
+#but then, it gets stuck.
+#I changed the losses to make more intuitive sense 
+
+# def discriminator_loss(self, fake, real):
+#         d_fake, d_real = self.forward(fake.clone().detach(), real)
+
+#         loss_d = 0
+#         for x_fake, x_real in zip(d_fake, d_real):
+#             loss_d += torch.mean(x_fake[-1] ** 2)
+#             loss_d += torch.mean((1 - x_real[-1]) ** 2)
+#         return loss_d
+
+#     def generator_loss(self, fake, real):
+#         d_fake, d_real = self.forward(fake, real)
+
+#         loss_g = 0
+#         for x_fake in d_fake:
+#             loss_g += torch.mean((1 - x_fake[-1]) ** 2)
+
+#         loss_feature = 0
+
+#         for i in range(len(d_fake)):
+#             for j in range(len(d_fake[i]) - 1):
+#                 loss_feature += F.l1_loss(d_fake[i][j], d_real[i][j].detach())
+#         return loss_g, loss_feature

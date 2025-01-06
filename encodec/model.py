@@ -30,7 +30,8 @@ class QuantizedResult:
     codes: torch.Tensor
     bandwidth: torch.Tensor  # bandwidth in kb/s used, per batch item.
     commit_loss: tp.Optional[torch.Tensor] = None
-    penalty: tp.Optional[torch.Tensor] = None
+    codebook_loss: tp.Optional[torch.Tensor] = None
+    latents: tp.Optional[torch.Tensor] = None
     metrics: dict = field(default_factory=dict)
 
 class LMModel(nn.Module):
@@ -91,6 +92,7 @@ class EncodecModel(nn.Module):
                  encoder: m.SEANetEncoder,
                  decoder: m.SEANetDecoder,
                  quantizer: qt.ResidualVectorQuantizer,
+                #  quantizer: qt.ResidualVectorQuantize,
                  target_bandwidths: tp.List[float], #I don't really understand this 
                  sample_rate: int, #10 fs
                  channels: int, #1
@@ -112,6 +114,7 @@ class EncodecModel(nn.Module):
         self.frame_rate = math.ceil(self.sample_rate / np.prod(self.encoder.ratios))
         self.name = name
         self.bits_per_codebook = int(math.log2(self.quantizer.bins))
+        self.n_q = quantizer.n_q
         assert 2 ** self.bits_per_codebook == self.quantizer.bins, \
             "quantizer bins must be a power of 2."
 
@@ -178,15 +181,21 @@ class EncodecModel(nn.Module):
         emb = self.encoder(x)
         # codes = self.quantizer.encode(emb, self.frame_rate, self.bandwidth)
         quantized_result : QuantizedResult = self.quantizer(emb, self.frame_rate, self.bandwidth)
+        # quantized_result: QuantizedResult = self.quantizer(emb, self.n_q)
         codes = quantized_result.codes.transpose(0, 1)
+        # codes = quantized_result.codes
         # codes is [B, K, T], with T frames, K nb of codebooks.
 
         encoded_frame = {
             'quantized': quantized_result.quantized,
             'codes': codes,
             'commit_loss': quantized_result.commit_loss,
+            'codebook_loss': quantized_result.codebook_loss,
             'scale': scale,
         }
+        #commit loss shape [N_q,1]
+        #codes shape [B, N_q, T]
+        #quantized shape [B, D, T]
 
         # return codes, torch.sum(quantized_result.commit_loss), scale
         return encoded_frame
@@ -233,8 +242,9 @@ class EncodecModel(nn.Module):
         # flatten the frames
         codes = torch.cat([frame['codes'] for frame in frames], dim=-1)
         commit_loss = torch.cat([frame['commit_loss'] for frame in frames], dim=-1)
+        codebook_loss = torch.cat([frame['codebook_loss'] for frame in frames], dim=-1)
 
-        return self.decode(frames)[:, :, :x.shape[-1]], codes, commit_loss
+        return self.decode(frames)[:, :, :x.shape[-1]], codes, commit_loss, codebook_loss
 
     def set_target_bandwidth(self, bandwidth: float):
         if bandwidth not in self.target_bandwidths:
@@ -273,15 +283,26 @@ class EncodecModel(nn.Module):
                    segment: tp.Optional[float] = None,
                    name: str = 'breathing_model',
                    ratios=[8, 5, 4, 2],
-                   bins=256):
-        encoder = m.SEANetEncoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios)
-        decoder = m.SEANetDecoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios)
+                   bins=256,
+                   dimension=128,
+                   codebook_dim=32
+                   ):
+        encoder = m.SEANetEncoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios, dimension=dimension)
+        decoder = m.SEANetDecoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios, dimension=dimension)
         n_q = int(1000 * target_bandwidths[-1] // (math.ceil(sample_rate / encoder.hop_length) * 10))
         quantizer = qt.ResidualVectorQuantizer(
             dimension=encoder.dimension,
             n_q=n_q,
             bins=bins,
+            codebook_dim=encoder.dimension,
         )
+        # quantizer = qt.ResidualVectorQuantize(
+        #     input_dim = encoder.dimension,
+        #     n_codebooks = n_q,
+        #     codebook_size = bins,
+        #     codebook_dim = 32,
+        #     quantizer_dropout = False
+        # )
 
         model = EncodecModel(
             encoder,

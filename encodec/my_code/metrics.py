@@ -19,7 +19,7 @@ class Metrics():
 
     def init_metrics(self):
         self.metrics_dict = {
-            "Loss per step": {},
+            # "Loss per step": {},
             "Loss Frequency": {},
             "Loss L1": {},
             "Loss L2": {},
@@ -34,6 +34,9 @@ class Metrics():
             "Max Gradient": {},
             "Learning Rate": {},
             "Loss": {},
+            "Logits Real": {},
+            "Logits Fake": {},
+            "Discriminator Accuracy": {},
         }
         self.metrics = set(self.metrics_dict.keys())
     
@@ -52,7 +55,7 @@ class Metrics():
     
     def clear_metrics(self):
         self.metrics_dict = {
-            "Loss per step": {},
+            # "Loss per step": {},
             "Loss Frequency": {},
             "Loss L1": {},
             "Loss L2": {},
@@ -67,6 +70,9 @@ class Metrics():
             "Max Gradient": {},
             "Learning Rate": {},
             "Loss": {},
+            "Logits Real": {},
+            "Logits Fake": {},
+            "Discriminator Accuracy": {},
         }
         self.used_keys = {}
 

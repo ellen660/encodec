@@ -12,7 +12,7 @@ class MergedDataset(Dataset):
         assert self.weight[0] > 0  # the first dataset is pivot
         print(f'===> Dataset Merged: {self.weight}')
         if debug:
-            size = 100
+            size = 512
         else:
             size = 2048
         self.size = round(size * sfreq)

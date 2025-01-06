@@ -30,6 +30,9 @@ import sys
 from my_code.spectrogram_loss import ReconstructionLoss, ReconstructionLosses
 
 import socket
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+import math
 
 def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config, writer, freq_loss):
     """train one step function
@@ -59,14 +62,14 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             continue
         # print(f'x shape: {x.shape}')
         x = x.to(device)
-        x_hat, _, commit_loss = model(x)
+        x_hat, _, commit_loss, codebook_loss = model(x)
 
         train_generator = (
             config.model.train_discriminator
             and epoch >= config.model.train_discriminator_start_epoch
         )
 
-        offset_prob = 1. - float(config.model.train_discriminator_prob) if epoch - config.model.train_discriminator_start_epoch < 10 else 0.0
+        offset_prob = 1. - float(config.model.train_discriminator_prob) if epoch - config.model.train_discriminator_start_epoch < config.model.train_discriminator_for else 0.0
         train_discriminator = (
             config.model.train_discriminator
             and epoch >= config.model.train_discriminator_start_epoch
@@ -80,6 +83,7 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             logits_real, logits_fake, fmap_real, fmap_fake = None, None, None, None
 
         commit_loss = torch.mean(commit_loss)
+        codebook_loss = torch.mean(codebook_loss)
         freq_loss_dict = freq_loss(x, x_hat)
         losses_g = total_loss(
                 fmap_real, 
@@ -95,12 +99,14 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
         acc = freq_loss_dict["acc"]
         loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
 
-        loss = losses_g['l_t'] * config.loss.weight_l1 + commit_loss * config.loss.weight_commit + loss_f 
+        loss = losses_g['l_t'] * config.loss.weight_l1 + loss_f + losses_g['l_t_2'] * config.loss.weight_l2
+        if epoch >= config.loss.commit_start_epoch:
+            loss += commit_loss * config.loss.weight_commit + codebook_loss
         
         if train_generator and not train_discriminator:
             loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
 
-        optimizer.zero_grad()
+        optimizer.zero_grad() #optimizer is the model only, so only updating those parameters
         loss.backward()
 
         # gradient clipping. restrict the norm of the gradients to be less than 1
@@ -115,14 +121,19 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
 
             logits_real, _ = disc(x)
             logits_fake, _ = disc(x_hat.detach()) # detach to avoid backpropagation to model
-            loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss\
+            loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss
             loss_disc.backward() 
+            accuracy = (float(torch.mean(logits_real[0]).item() > torch.mean(logits_fake[0]).item()) + float(torch.mean(logits_real[1]).item() > torch.mean(logits_fake[1]).item())) / 2
 
             if config.common.gradient_clipping:
                 nn.utils.clip_grad_norm_(disc.parameters(), 0.1)
 
             optimizer_disc.step()
-            metrics.fill_metrics({'Loss Discriminator': loss_disc.item()}, epoch*(train_loader) + i)
+            # breakpoint()
+            metrics.fill_metrics({'Loss Discriminator': loss_disc.item()}, epoch*len(train_loader) + i)
+            metrics.fill_metrics({'Logits Real': (torch.mean(logits_real[0]).item() + torch.mean(logits_real[1]).item())/2}, epoch*len(train_loader) + i)
+            metrics.fill_metrics({'Logits Fake': (torch.mean(logits_fake[0]).item() + torch.mean(logits_fake[1]).item())/2}, epoch*len(train_loader) + i)
+            metrics.fill_metrics({'Discriminator Accuracy': accuracy}, epoch*len(train_loader) + i)
             # logger(writer, {'Loss Discriminator': loss_disc.item()}, 'train', epoch*len(train_loader) + i)
             epoch_loss += loss_disc.item()
 
@@ -130,14 +141,14 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             for param in disc.parameters():
                 if param.grad is not None:
                     max_disc_gradient = max(max_disc_gradient, param.grad.abs().max().item())
-            metrics.fill_metrics({'Max Discriminator Gradient': max_disc_gradient}, epoch*(train_loader) + i)
+            metrics.fill_metrics({'Max Discriminator Gradient': max_disc_gradient}, epoch*len(train_loader) + i)
             # logger(writer, {'Max Discriminator Gradient': max_disc_gradient}, 'train', epoch*len(train_loader) + i)
 
         epoch_loss += loss.item()
 
         # add the loss to the tensorboard
         metrics.fill_metrics({
-            'Loss per step': loss.item(),
+            # 'Loss per step': loss.item(),
             'Loss Frequency': loss_f.item(),
             'Loss L1': losses_g['l_t'].item(),
             'Loss L2': losses_g['l_t_2'].item(),
@@ -157,7 +168,7 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
         
         if train_generator and not train_discriminator:
             metrics.fill_metrics({
-                'Loss Generator': losses_g['l_g'].item(),\
+                'Loss Generator': losses_g['l_g'].item(),
                 'Loss Feature': losses_g['l_feat'].item()
             },epoch*len(train_loader) + i)
             # logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'train', epoch*len(train_loader) + i)
@@ -208,7 +219,9 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
         if x is None:
             continue
         x = x.to(device)
-        x_hat, codes, commit_loss = model(x)
+        x_hat, codes, commit_loss, codebook_loss = model(x)
+        commit_loss = torch.mean(commit_loss)
+        codebook_loss = torch.mean(codebook_loss)
 
         if train_discriminator:
             logits_real, fmap_real = disc(x)
@@ -216,7 +229,6 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
         else:
             logits_real, logits_fake, fmap_real, fmap_fake = None, None, None, None
 
-        commit_loss = torch.mean(commit_loss)
         freq_loss_dict = freq_loss(x, x_hat)
         losses_g = total_loss(
                 fmap_real, 
@@ -231,10 +243,12 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
 
         loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
         loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
-        acc = freq_loss_dict["acc"] * config.loss.weight_freq
+        acc = freq_loss_dict["acc"] 
         loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
 
-        loss = losses_g['l_t'] * config.loss.weight_l1 + losses_g['l_t_2'] * config.loss.weight_l2 + commit_loss * config.loss.weight_commit + loss_f 
+        loss = losses_g['l_t'] * config.loss.weight_l1 + losses_g['l_t_2'] * config.loss.weight_l2 + loss_f 
+        if epoch >= config.loss.commit_start_epoch:
+            loss += commit_loss * config.loss.weight_commit + codebook_loss
         
         if train_discriminator:
             loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
@@ -243,16 +257,15 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
         epoch_loss += loss.item()
 
         all_codes.append(codes)
-        metrics.fill_metrics({
-            'Loss per step': loss.item(),
-            'Loss Frequency': loss_f.item(),
-            'Loss L1': losses_g['l_t'].item(),
-            'Loss L2': losses_g['l_t_2'].item(),
-            'Loss commit_loss': commit_loss.item(),
-            'Loss Frequency L1': loss_f_l1.item(),
-            'Loss Frequency L2': loss_f_l2.item(),
-            'Frequency Accuracy': acc.item()
-        }, epoch*len(val_loader) + i)
+        # metrics.fill_metrics({
+        #     # 'Loss per step': loss.item(),
+        #     'Loss Frequency': loss_f.item(),
+        #     'Loss L1': losses_g['l_t'].item(),
+        #     'Loss L2': losses_g['l_t_2'].item(),
+        #     'Loss Frequency L1': loss_f_l1.item(),
+        #     'Loss Frequency L2': loss_f_l2.item(),
+        #     'Frequency Accuracy': acc.item()
+        # }, epoch*len(val_loader) + i)
         # logger(writer, {'Loss per step': loss.item()}, 'val', epoch*len(train_loader) + i)
         # logger(writer, {'Loss Frequency': loss_f.item()}, 'val', epoch*len(train_loader) + i)
         # logger(writer, {'Loss L1': losses_g['l_t'].item()}, 'val', epoch*len(train_loader) + i)
@@ -261,12 +274,12 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
         # logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'val', epoch*len(train_loader) + i)
         # logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'val', epoch*len(train_loader) + i)
         # logger(writer, {'Frequency Accuracy': acc.item()}, 'val', epoch*len(train_loader) + i)
-        if train_discriminator:
-            metrics.fill_metrics({
-                'Loss Generator': losses_g['l_g'].item(),
-                'Loss Feature': losses_g['l_feat'].item(),
-                'Loss Discriminator': loss_disc.item()
-            }, epoch*len(val_loader) + i)
+        # if train_discriminator:
+        #     metrics.fill_metrics({
+        #         'Loss Generator': losses_g['l_g'].item(),
+        #         'Loss Feature': losses_g['l_feat'].item(),
+        #         'Loss Discriminator': loss_disc.item()
+        #     }, epoch*len(val_loader) + i)
             # logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'val', epoch*len(val_loader) + i)
             # logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'val', epoch*len(val_loader) + i)
             # logger(writer, {'Loss Discriminator': loss_disc.item()}, 'val', epoch*len(val_loader) + i)
@@ -293,14 +306,14 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
 
             axs[0].plot(x_time, x[0].cpu().numpy().squeeze())
             axs[0].set_title('Original')
-            axs[0].set_ylim(-4, 4)
+            axs[0].set_ylim(-6, 6)
             axs[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, num_freq//2], vmin=min_spec_val, vmax=max_spec_val)
             axs[1].invert_yaxis()
             axs[1].set_title('Original Spectrogram')
 
             axs[2].plot(x_time, x_hat[0].cpu().numpy().squeeze())
             axs[2].set_title('Reconstructed')
-            axs[2].set_ylim(-4, 4)
+            axs[2].set_ylim(-6, 6)
             axs[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, num_freq//2], vmin=min_spec_val, vmax=max_spec_val)
             axs[3].invert_yaxis()
             axs[3].set_title('Reconstructed Spectrogram')
@@ -321,8 +334,25 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
     all_codes = all_codes.reshape(all_codes.shape[0], -1)
 
     # log the distribution of codes. one distribution for each codebook
+    entropies = []
     for i in range(all_codes.shape[0]):
         writer.add_histogram(f'Codes/Codebook {i}', all_codes[i], epoch)
+        #calculate entropy
+        _, counts = torch.unique(all_codes[i], return_counts=True)
+        probabilities = counts.float() / counts.sum()
+        entropy = -(probabilities * probabilities.log2()).sum()
+        entropies.append(entropy.item())
+    #create a graph of entropy
+    fig, ax = plt.subplots()
+    x_axis = np.arange(0, len(entropies))
+    ax.plot(x_axis, entropies)
+    ax.set_title("Entropy of Codebooks")
+    ax.set_xlabel("Codebook index")
+    ax.set_ylabel("Entropy")
+    ax.set_ylim(0, math.log2(config.model.bins))
+    fig.tight_layout()
+    writer.add_figure(f"Entropy/{epoch}", fig)
+    plt.close(fig)
 
     # # Create a signal of 2 minutes 
     # if epoch == 0:   
@@ -365,9 +395,9 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
     print(f"Epoch {epoch}, validation loss: {loss_per_epoch}")
 
     # log the metrics
-    metrics_dict = metrics.compute_and_log_metrics()
-    metrics_dict['Loss'] = loss_per_epoch
-    logger(writer, metrics_dict, 'val', epoch)
+    # metrics_dict = metrics.compute_and_log_metrics()
+    # metrics_dict['Loss'] = loss_per_epoch
+    # logger(writer, metrics_dict, 'val', epoch)
     metrics.clear_metrics()
     # logger(writer, {'Loss': loss_per_epoch}, 'val', epoch)
 
@@ -470,8 +500,8 @@ def init_model(config):
     )
 
     # log model, disc model parameters and train mode
-    # print(model)
-    print(disc_model)
+    print(model)
+    # print(disc_model)
     # breakpoint()
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
     print(f"disc model train mode :{disc_model.training}")
@@ -492,12 +522,11 @@ def set_args():
 if __name__ == "__main__":
 
     args = set_args()
-    curr_time = datetime.now().strftime("%Y%m%d")
-    curr_min = datetime.now().strftime("%H%M%S")
-
     user_name = os.getlogin()
 
     if user_name == 'ellen660':
+        curr_time = datetime.now().strftime("%Y%m%d")
+        curr_min = datetime.now().strftime("%H%M%S")
         log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
     elif user_name == 'chaoli':
         log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
@@ -505,24 +534,22 @@ if __name__ == "__main__":
         raise Exception("User not recognized")
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
-        
+
     # Load the YAML file
     config = load_config("encodec/params/%s.yaml" % args.exp_name, log_dir)
     writer = init_logger(log_dir)
 
-    device = torch.device("cuda")
     torch.manual_seed(config.common.seed)
+    data_parallel = config.distributed.data_parallel
+    device = torch.device("cuda")
+    # breakpoint()
 
     metrics_args = MetricsArgs(num_datasets=1, device=device)
     metrics = Metrics(metrics_args)
 
-    data_parallel = config.distributed.data_parallel
-
     train_loader, val_loader = init_dataset(config)
-    # model, disc = init_model(config)
     model, disc = init_model(config)
     model = model.to(device)
-
     if config.model.train_discriminator:
         disc = disc.to(device)
     else:
@@ -538,24 +565,18 @@ if __name__ == "__main__":
     else:
         optimizer_disc = None
 
-    # scheduler = WarmupCosineLrScheduler(optimizer, max_iter=config.common.max_epoch*len(trainloader), eta_ratio=0.1, warmup_iter=config.lr_scheduler.warmup_epoch*len(trainloader), warmup_ratio=1e-4)
-
     # cosine annealing scheduler
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
 
     if config.model.train_discriminator:
-        disc_scheduler = LinearWarmupCosineAnnealingLR(optimizer_disc, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
+        disc_scheduler = LinearWarmupCosineAnnealingLR(optimizer_disc, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch-config.model.train_discriminator_start_epoch)
     else:
         disc_scheduler = None
 
     #Reconstruction loss
-    # freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
-    freq_loss = ReconstructionLosses(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, hop_length=config.loss.hop_length, win_length=config.loss.win_length, device=device)
+    freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
+    # freq_loss = ReconstructionLosses(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, hop_length=config.loss.hop_length, win_length=config.loss.win_length, device=device)
 
-    # instantiate loss balancer
-    # balancer = Balancer(config.balancer.weights)
-    # if balancer:
-    #     print(f'Loss balancer with weights {balancer.weights} instantiated')
     test(metrics, 0, model, disc, val_loader, config, writer, freq_loss=freq_loss)
     for epoch in tqdm(range(1, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config=config, writer=writer, freq_loss=freq_loss,)
