@@ -117,11 +117,8 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
 
         # only update discriminator with probability from paper (configure)
         if train_discriminator:
-<<<<<<< HEAD
             # if random.random() < float(config.model.train_discriminator_prob):
             # print('train discriminator')
-=======
->>>>>>> 0ebf6e2d1c7984951189f97b5f32d614ae5946d8
             optimizer_disc.zero_grad()
 
             logits_real, _ = disc(x)
