@@ -111,11 +111,8 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
 
         # only update discriminator with probability from paper (configure)
         if train_discriminator:
-<<<<<<< HEAD
             # if random.random() < float(config.model.train_discriminator_prob):
             # print('train discriminator')
-=======
->>>>>>> 0ebf6e2d1c7984951189f97b5f32d614ae5946d8
             optimizer_disc.zero_grad()
 
             logits_real, _ = disc(x)
@@ -417,29 +414,50 @@ def init_dataset(config):
     train_datasets = []
     val_datasets = []
     weight_list = []
+
+    # selected channels
+    channels = dict()
+    if config.dataset.thorax > 0:
+        channels['thorax'] = config.dataset.thorax
+    if config.dataset.abdominal > 0:
+        channels['abdominal'] = config.dataset.abdominal
+
+    if config.dataset.mgh > 0:
+        mgh_channels = channels.copy()
+        mgh_channels['rf'] = config.dataset.rf
+
+        train_datasets.append(BreathingDataset(dataset = "mgh_new", mode = "train", cv = config.dataset.cv, channels = mgh_channels, max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "mgh_new", mode = "val", cv = config.dataset.cv, channels = mgh_channels, max_length = config.dataset.max_length))
+        weight_list.append(config.dataset.mgh)
+
     if config.dataset.shhs2 > 0:
-        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
         weight_list.append(config.dataset.shhs2)
+
     if config.dataset.shhs1 > 0:
-        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
         weight_list.append(config.dataset.shhs1)
+
     if config.dataset.mros1 > 0:
-        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
         weight_list.append(config.dataset.mros1)
+
     if config.dataset.mros2 > 0:
-        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
         weight_list.append(config.dataset.mros2)
+
     if config.dataset.wsc > 0:
-        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
         weight_list.append(config.dataset.wsc)
+        
     if config.dataset.cfs > 0:
-        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "cfs", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "cfs", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
         weight_list.append(config.dataset.cfs)
 
     print("Number of training datasets: ", len(train_datasets))

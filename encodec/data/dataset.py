@@ -15,26 +15,23 @@ class BreathingDataset(Dataset):
     root = "/data/netmit/wifall/ADetect/data"
     NumCv = 4
         
-    def __init__(self, dataset="shhs2_new", mode = "train", cv = 0, channel = "thorax", max_length=10 * 60 * 60 * 4):
+    def __init__(self, dataset="shhs2_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length=10 * 60 * 60 * 4):
 
         self.dataset = dataset
         self.mode = mode
         self.cv = cv
-        self.channel = channel
-        self.ds_dir = os.path.join(self.root, self.dataset, self.channel)
+        self.channels = channels # dictionary of channel names and their weights
+        self.ds_dir = os.path.join(self.root, self.dataset)
         self.max_length = max_length
 
-        # dataset preparation
-        # file_list = sorted([f for f in os.listdir(self.ds_dir) if f.endswith('.npz') if self.filter_files(f)])
-        file_list_before = sorted([f for f in os.listdir(self.ds_dir) if f.endswith('.npz')])
-        len_before = len(file_list_before)
-        file_list = [f for f in file_list_before if f not in fns_to_ignore]
-        len_after = len(file_list)
-        print(f"Filtered out {len_before - len_after} files")
+        # dataset preparation (only select the intersection between all channels)
+        file_list = set()
+        for channel in self.channels.keys():
+            file_list_before = sorted([f for f in os.listdir(os.path.join(self.ds_dir, channel)) if f.endswith('.npz')])
+            file_list_after = [f for f in file_list_before if f not in fns_to_ignore]
+            file_list.update(file_list_after)
 
-        # # get the set difference
-        # file_diff = set(file_list_before) - set(file_list)
-        # print(f"file_diff: {file_diff}")
+        file_list = sorted(file_list)
 
         train_list, val_list = self.split_train_test(file_list)
 
@@ -58,13 +55,6 @@ class BreathingDataset(Dataset):
 
         return train_files, test_files
 
-    # def filter_files(self, f):
-    #     filepath = os.path.join(self.ds_dir, f)
-    #     breathing, fs = np.load(filepath)['data'], np.load(filepath)['fs']
-    #     if breathing.shape[0] < self.max_length:
-    #         return False
-    #     return True
-
     def __len__(self):
         return len(self.file_list)
     
@@ -82,7 +72,10 @@ class BreathingDataset(Dataset):
 
     def __getitem__(self, idx):
         filename = self.file_list[idx]
-        filepath = os.path.join(self.ds_dir, filename)
+
+        # now randomly select a channel, sampling based on their weights
+        selected_channel = np.random.choice(list(self.channels.keys()), p=list(self.channels.values()))
+        filepath = os.path.join(self.ds_dir, selected_channel, filename)
         breathing = np.load(filepath)['data'].squeeze()
         fs = np.load(filepath)['fs']
         # print(f'breathing shape: {breathing.shape}, fs: {fs}')
@@ -114,7 +107,8 @@ class BreathingDataset(Dataset):
         item = {
             "x": None,
             "y": 0,
-            "filename": filename
+            "filename": filename,
+            "selected_channel": selected_channel
         }
 
         # if there is any nan or inf in the signal, return None
