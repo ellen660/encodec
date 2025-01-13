@@ -324,7 +324,8 @@ class VectorQuantization(nn.Module):
                           'The bug wasn\'t fixed here for reproducibility.')
             if self.commitment_weight > 0:
                 commit_loss = F.mse_loss(quantize.detach(), x)
-                loss = loss + commit_loss * self.commitment_weight
+                # codebook_loss = F.mse_loss(quantize, x.detach())
+                loss = loss + commit_loss * self.commitment_weight 
 
         quantize = self.project_out(quantize)
         quantize = rearrange(quantize, "b n d -> b d n")
@@ -354,6 +355,15 @@ class ResidualVectorQuantization(nn.Module):
         self.layers = nn.ModuleList(
             [VectorQuantization(**kwargs) for _ in range(num_quantizers)]
         )
+    
+    @property
+    def codebooks(self):
+        count = 0
+        codebooks = {}
+        for layer in self.layers:
+            codebooks[count] = layer.codebook
+            count += 1
+        print(f'codebooks {codebooks}')
 
     def forward(self, x, n_q: tp.Optional[int] = None):
         quantized_out = 0.0
@@ -396,9 +406,13 @@ class ResidualVectorQuantization(nn.Module):
         # sys.exit()
         return out_indices
 
-    def decode(self, q_indices: torch.Tensor) -> torch.Tensor:
+    def decode(self, q_indices: torch.Tensor, n_q=None) -> torch.Tensor:
+        if n_q is None:
+            n_q = len(self.layers)
         quantized_out = torch.tensor(0.0, device=q_indices.device)
         for i, indices in enumerate(q_indices):
+            if i >= n_q:
+                break
             layer = self.layers[i]
             quantized = layer.decode(indices)
             quantized_out = quantized_out + quantized
