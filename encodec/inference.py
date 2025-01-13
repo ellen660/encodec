@@ -43,6 +43,7 @@ def init_model(config):
         segment=eval(config.model.segment), name=config.model.name,
         ratios=config.model.ratios,
         bins=config.model.bins,
+        dimension=config.model.dimension,
     )
     # disc_model = MultiScaleSTFTDiscriminator(
     #     in_channels=config.model.channels,
@@ -69,9 +70,21 @@ if __name__ == "__main__":
     # log_dir = "tensorboard/231224_l1"
     # log_dir = "tensorboard/261224_l1"
     # log_dir = "tensorboard/271224_l1"
+    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_5s"
     
-    log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_5s"
-    save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions"
+    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s"
+    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s"
+
+    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_disc"
+    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_disc"
+
+    log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_new"
+    save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_new"
+
+    if not os.path.exists(save_dir):
+        os.mkdir(save_dir)
+        os.mkdir(os.path.join(save_dir, "shhs2_new"))
+        os.mkdir(os.path.join(save_dir, "shhs2_new", "thorax"))
         
     # Load the YAML file
     config = load_config(f'{log_dir}/config.yaml', log_dir)
@@ -79,7 +92,7 @@ if __name__ == "__main__":
     device = torch.device("cuda")
 
     # Initialize model and discriminator
-    val_ds = BreathingDataset(dataset="shhs2_new", mode="test", cv=0, channel="thorax", max_length=None)
+    val_ds = BreathingDataset(dataset="shhs2_new", mode="test", cv=0, channels={"thorax": 1.0}, max_length=None)
     val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4)
 
     model = init_model(config)
@@ -91,6 +104,8 @@ if __name__ == "__main__":
     # Checkpoint path (set this to your specific checkpoint)
     checkpoint_path_model = f"{log_dir}/model.pth"
     # checkpoint_path_disc = f"{log_dir}/disc.pth"
+
+    compression_ratio = np.prod(config.model.ratios)
 
     # ===================== RELOAD CHECKPOINT =====================
     print("Loading model and discriminator from checkpoint...")
@@ -109,13 +124,15 @@ if __name__ == "__main__":
 
     model.eval()
     
-    #only first 10 samples of val_loader
     for i, item in enumerate(tqdm(val_loader)):
         x = item["x"]
         filename = item["filename"]
         x = x.to(device)
-        x_hat, _, _ = model(x)
+        x_hat, codes, _, _ = model(x)
         x_hat = x_hat.squeeze().cpu().detach().numpy()
 
         # save the prediction in the folder
         np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename[0]), data=x_hat, fs = 10)
+
+        # # save the codes in the folder
+        # np.savez(os.path.join(save_dir, "shhs2_new", "codes", filename[0]), data=codes.squeeze().cpu().detach().numpy(), fs = 10/compression_ratio)

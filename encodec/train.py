@@ -389,6 +389,7 @@ def init_dataset(config):
     cv = config.dataset.cv
     max_length = config.dataset.max_length
     weights = {
+        "mgh": config.dataset.mgh,
         "shhs2": config.dataset.shhs2,
         "shhs1": config.dataset.shhs1,
         "mros1": config.dataset.mros1,
@@ -400,25 +401,83 @@ def init_dataset(config):
     train_datasets = []
     val_datasets = []
     weight_list = []
+    # selected channels
+    channels = dict()
+    if config.dataset.thorax > 0:
+        channels['thorax'] = config.dataset.thorax
+    if config.dataset.abdominal > 0:
+        channels['abdominal'] = config.dataset.abdominal
+
+    if weights["mgh"] > 0:
+        mgh_channels = channels.copy()
+        mgh_channels['rf'] = config.dataset.rf
+        train_datasets.append(BreathingDataset(dataset = "mgh_new", mode = "train", cv = cv, channels = mgh_channels, max_length = max_length))
+        # val_datasets.append(BreathingDataset(dataset = "mgh_new", mode = "val", cv = config.dataset.cv, channels = mgh_channels, max_length = config.dataset.max_length))
+        weight_list.append(weights["mgh"])
     if weights["shhs2"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
         # val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
         weight_list.append(weights["shhs2"] )
     if weights["shhs1"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
         weight_list.append(weights["shhs1"])
     if weights["mros1"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
         weight_list.append(weights["mros1"])
     if weights["mros2"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
         weight_list.append(weights["mros2"])
     if weights["wsc"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
         weight_list.append(weights["wsc"])
     if weights["cfs"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = cv, channel = channels, max_length = max_length))
         weight_list.append(weights["cfs"])
+
+    # selected channels
+    # channels = dict()
+    # if config.dataset.thorax > 0:
+    #     channels['thorax'] = config.dataset.thorax
+    # if config.dataset.abdominal > 0:
+    #     channels['abdominal'] = config.dataset.abdominal
+
+    # if config.dataset.mgh > 0:
+    #     mgh_channels = channels.copy()
+    #     mgh_channels['rf'] = config.dataset.rf
+
+    #     train_datasets.append(BreathingDataset(dataset = "mgh_new", mode = "train", cv = config.dataset.cv, channels = mgh_channels, max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "mgh_new", mode = "val", cv = config.dataset.cv, channels = mgh_channels, max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.mgh)
+
+    # if config.dataset.shhs2 > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.shhs2)
+
+    # if config.dataset.shhs1 > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.shhs1)
+
+    # if config.dataset.mros1 > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.mros1)
+
+    # if config.dataset.mros2 > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.mros2)
+
+    # if config.dataset.wsc > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.wsc)
+        
+    # if config.dataset.cfs > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "cfs", mode = "val", cv = config.dataset.cv, channels = channels, max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.cfs)
 
     print("Number of training datasets: ", len(train_datasets))
 
@@ -433,45 +492,6 @@ def init_dataset(config):
     print(f'Distribution: {ds_ids}')
     return train_loader
     # val_dataset = MergedDataset(val_datasets, weight_list, 0.2, debug = True)
-
-    # train_datasets = []
-    # val_datasets = []
-    # weight_list = []
-    # if config.dataset.shhs2 > 0:
-    #     train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     weight_list.append(config.dataset.shhs2)
-    # if config.dataset.shhs1 > 0:
-    #     train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     val_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     weight_list.append(config.dataset.shhs1)
-    # if config.dataset.mros1 > 0:
-    #     train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     val_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     weight_list.append(config.dataset.mros1)
-    # if config.dataset.mros2 > 0:
-    #     train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     val_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     weight_list.append(config.dataset.mros2)
-    # if config.dataset.wsc > 0:
-    #     train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     val_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     weight_list.append(config.dataset.wsc)
-    # if config.dataset.cfs > 0:
-    #     train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     val_datasets.append(BreathingDataset(dataset = "cfs", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-    #     weight_list.append(config.dataset.cfs)
-
-    # print("Number of training datasets: ", len(train_datasets))
-    # breakpoint()
-
-    # # merge the datasets
-    # train_dataset = MergedDataset(train_datasets, weight_list, 1, debug = config.dataset.debug)
-    # val_dataset = MergedDataset(val_datasets, weight_list, 0.2, debug = config.dataset.debug)
-    # train_loader = DataLoader(train_dataset, batch_size=config.dataset.batch_size, shuffle=True, num_workers=config.dataset.num_workers)
-    # val_loader = DataLoader(val_dataset, batch_size=config.dataset.batch_size, shuffle=False, num_workers=config.dataset.num_workers)
-
-    # return train_loader, val_loader
 
 def init_model(config):
     model = EncodecModel._get_model(
