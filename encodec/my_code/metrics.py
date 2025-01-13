@@ -23,6 +23,16 @@ class Metrics():
             "Loss Frequency": {},
             "Loss L1": {},
             "Loss L2": {},
+            "Loss L1 0": {},
+            "Loss L2 0": {},
+            "Loss L1 1": {},
+            "Loss L2 1": {},
+            "Loss L1 2": {},
+            "Loss L2 2": {},
+            "Loss L1 3": {},
+            "Loss L2 3": {},
+            "Loss L1 4": {},
+            "Loss L2 4": {},
             "Loss commit_loss": {},
             "Loss Frequency L1": {},
             "Loss Frequency L2": {},
@@ -36,7 +46,6 @@ class Metrics():
             "Loss": {},
             "Logits Real": {},
             "Logits Fake": {},
-            "Discriminator Accuracy": {},
         }
         self.metrics = set(self.metrics_dict.keys())
     
@@ -57,8 +66,16 @@ class Metrics():
         self.metrics_dict = {
             # "Loss per step": {},
             "Loss Frequency": {},
-            "Loss L1": {},
-            "Loss L2": {},
+            "Loss L1 0": {},
+            "Loss L2 0": {},
+            "Loss L1 1": {},
+            "Loss L2 1": {},
+            "Loss L1 2": {},
+            "Loss L2 2": {},
+            "Loss L1 3": {},
+            "Loss L2 3": {},
+            "Loss L1 4": {},
+            "Loss L2 4": {},
             "Loss commit_loss": {},
             "Loss Frequency L1": {},
             "Loss Frequency L2": {},
@@ -72,7 +89,6 @@ class Metrics():
             "Loss": {},
             "Logits Real": {},
             "Logits Fake": {},
-            "Discriminator Accuracy": {},
         }
         self.used_keys = {}
 

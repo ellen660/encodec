@@ -142,8 +142,8 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             epoch_loss += loss.item()
             metrics.fill_metrics({
                 'Loss Frequency': freq_loss_dict["total_loss"].item(),
-                # 'Loss L1': losses_g['l_t'].item(),
-                # 'Loss L2': losses_g['l_t_2'].item(),
+                'Loss L1': losses_g['l_1'].item(),
+                'Loss L2': losses_g['l_2'].item(),
                 'Loss commit_loss': commit_loss.item(),
                 'Loss Frequency L1': freq_loss_dict["l1_loss"].item(),
                 'Loss Frequency L2': freq_loss_dict["l2_loss"].item(),
