@@ -19,6 +19,7 @@ class BreathingDataset(Dataset):
 
         self.dataset = dataset
         self.mode = mode
+        assert self.mode == 'train', 'Only support train mode'
         self.cv = cv
         self.channel = channel
         self.ds_dir = os.path.join(self.root, self.dataset, self.channel)
@@ -31,7 +32,7 @@ class BreathingDataset(Dataset):
         file_list = [f for f in file_list_before if f not in fns_to_ignore]
         len_after = len(file_list)
         print(f"Filtered out {len_before - len_after} files")
-
+        
         # # get the set difference
         # file_diff = set(file_list_before) - set(file_list)
         # print(f"file_diff: {file_diff}")
@@ -51,10 +52,10 @@ class BreathingDataset(Dataset):
         train_files = []
         test_files = []
         for i in range(len(file_list)):
-            if i % self.NumCv == self.cv:
-                test_files.append(file_list[i])
-            else:
-                train_files.append(file_list[i])
+            # if i % self.NumCv == self.cv:
+            #     test_files.append(file_list[i])
+            # else:
+            train_files.append(file_list[i])
 
         return train_files, test_files
 
@@ -136,15 +137,32 @@ class BreathingDataset(Dataset):
 
         return item
 
-# def main():
-#     dataset = BreathingDataset()
-#     print(f"Dataset size is {len(dataset)}")
-#     dataloader = DataLoader(dataset, batch_size=48, num_workers = 32, shuffle=True)
+def main():
+    # data = np.load('/data/netmit/wifall/ADetect/data/shhs2_new/thorax/shhs2-205800.npz')
+    # min_diff = (data['data'] - data['data'])
+    # print(f"Min diff: {min_diff}")
 
-#     for i, (features, labels) in enumerate(dataloader):
-#         print(f"Batch {i+1}:")
-#         print(f"Features shape: {features.shape}")
+    file_list = [f for f in os.listdir('/data/netmit/wifall/ADetect/data/shhs2_new/thorax') if f.endswith('.npz')]
+    for file in file_list:
+        data = np.load(f'/data/netmit/wifall/ADetect/data/shhs2_new/thorax/{file}')
+        breathing = data['data']
+        pairwise_diff = breathing[:, np.newaxis] - breathing[np.newaxis, :]
+        min_diff = np.min(pairwise_diff)
+        print(f'File: {file}, min diff: {min_diff}')
+        breakpoint()
 
-# if __name__ == '__main__':
-#     main()
+        # print(f"File: {file}, breathing shape: {breathing.shape}")
+
+    # dataset = BreathingDataset()
+    # # print(f"Dataset size is {len(dataset)}")
+    # dataloader = DataLoader(dataset, batch_size=1, num_workers = 32, shuffle=True)
+
+    # for i, (features, labels) in enumerate(dataloader):
+    #     breathing = features[0]
+
+    #     print(f"Batch {i+1}:")
+    #     print(f"Features shape: {features.shape}")
+
+if __name__ == '__main__':
+    main()
 

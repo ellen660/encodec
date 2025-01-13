@@ -33,6 +33,7 @@ import socket
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import math
+import time
 
 def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config, writer, freq_loss):
     """train one step function
@@ -51,16 +52,14 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
         warmup_scheduler (_type_): warmup learning rate
     """
     model.train()
-
     if config.model.train_discriminator and epoch >= config.model.train_discriminator_start_epoch:
         disc.train()
 
     epoch_loss = 0
-    for i, item in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
+    for i, (item, ds_id) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
         x = item["x"]
         if x is None:
             continue
-        # print(f'x shape: {x.shape}')
         x = x.to(device)
         x_hat, _, commit_loss, codebook_loss = model(x)
 
@@ -69,11 +68,11 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             and epoch >= config.model.train_discriminator_start_epoch
         )
 
-        offset_prob = 1. - float(config.model.train_discriminator_prob) if epoch - config.model.train_discriminator_start_epoch < config.model.train_discriminator_for else 0.0
+        # offset_prob = 1. - float(config.model.train_discriminator_prob) if epoch - config.model.train_discriminator_start_epoch < config.model.train_discriminator_for else 0.0
         train_discriminator = (
             config.model.train_discriminator
             and epoch >= config.model.train_discriminator_start_epoch
-            and random.random() < float(config.model.train_discriminator_prob) + offset_prob
+            and random.random() < float(config.model.train_discriminator_prob) #+ offset_prob
         )
 
         if train_generator and not train_discriminator:
@@ -93,13 +92,12 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
                 x_hat, 
                 sample_rate=10,
             ) 
-        
-        loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
-        loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
-        acc = freq_loss_dict["acc"]
-        loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
+        # loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
+        # loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
+        # acc = freq_loss_dict["acc"]
+        # loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
 
-        loss = losses_g['l_t'] * config.loss.weight_l1 + loss_f + losses_g['l_t_2'] * config.loss.weight_l2
+        loss = losses_g['l_1'] * config.loss.weight_l1 + freq_loss_dict["total_loss"] * config.loss.weight_freq + losses_g['l_2'] * config.loss.weight_l2
         if epoch >= config.loss.commit_start_epoch:
             loss += commit_loss * config.loss.weight_commit + codebook_loss
         
@@ -108,16 +106,13 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
 
         optimizer.zero_grad() #optimizer is the model only, so only updating those parameters
         loss.backward()
-
         # gradient clipping. restrict the norm of the gradients to be less than 1
         if config.common.gradient_clipping:
             nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-
         optimizer.step()
 
         # only update discriminator with probability from paper (configure)
         if train_discriminator:
-            # if random.random() < float(config.model.train_discriminator_prob):
             # print('train discriminator')
             optimizer_disc.zero_grad()
 
@@ -125,85 +120,71 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             logits_fake, _ = disc(x_hat.detach()) # detach to avoid backpropagation to model
             loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss
             loss_disc.backward() 
-            accuracy = (float(torch.mean(logits_real[0]).item() > torch.mean(logits_fake[0]).item()) + float(torch.mean(logits_real[1]).item() > torch.mean(logits_fake[1]).item())) / 2
 
             if config.common.gradient_clipping:
                 nn.utils.clip_grad_norm_(disc.parameters(), 0.1)
 
             optimizer_disc.step()
             # breakpoint()
-            metrics.fill_metrics({'Loss Discriminator': loss_disc.item()}, epoch*len(train_loader) + i)
-            metrics.fill_metrics({'Logits Real': (torch.mean(logits_real[0]).item() + torch.mean(logits_real[1]).item())/2}, epoch*len(train_loader) + i)
-            metrics.fill_metrics({'Logits Fake': (torch.mean(logits_fake[0]).item() + torch.mean(logits_fake[1]).item())/2}, epoch*len(train_loader) + i)
-            metrics.fill_metrics({'Discriminator Accuracy': accuracy}, epoch*len(train_loader) + i)
-            # logger(writer, {'Loss Discriminator': loss_disc.item()}, 'train', epoch*len(train_loader) + i)
-            epoch_loss += loss_disc.item()
+            if epoch % config.common.log_interval == 0:
+                metrics.fill_metrics({'Loss Discriminator': loss_disc.item()}, epoch*len(train_loader) + i)
+                metrics.fill_metrics({'Logits Real': (torch.mean(logits_real[0]).item() + torch.mean(logits_real[1]).item())/2}, epoch*len(train_loader) + i)
+                metrics.fill_metrics({'Logits Fake': (torch.mean(logits_fake[0]).item() + torch.mean(logits_fake[1]).item())/2}, epoch*len(train_loader) + i)
+                epoch_loss += loss_disc.item()
 
-            max_disc_gradient = torch.tensor(0.0).to(device)
-            for param in disc.parameters():
-                if param.grad is not None:
-                    max_disc_gradient = max(max_disc_gradient, param.grad.abs().max().item())
-            metrics.fill_metrics({'Max Discriminator Gradient': max_disc_gradient}, epoch*len(train_loader) + i)
-            # logger(writer, {'Max Discriminator Gradient': max_disc_gradient}, 'train', epoch*len(train_loader) + i)
+                max_disc_gradient = torch.tensor(0.0).to(device)
+                for param in disc.parameters():
+                    if param.grad is not None:
+                        max_disc_gradient = max(max_disc_gradient, param.grad.abs().max().item())
+                metrics.fill_metrics({'Max Discriminator Gradient': max_disc_gradient}, epoch*len(train_loader) + i)
 
-        epoch_loss += loss.item()
-
-        # add the loss to the tensorboard
-        metrics.fill_metrics({
-            # 'Loss per step': loss.item(),
-            'Loss Frequency': loss_f.item(),
-            'Loss L1': losses_g['l_t'].item(),
-            'Loss L2': losses_g['l_t_2'].item(),
-            'Loss commit_loss': commit_loss.item(),
-            'Loss Frequency L1': loss_f_l1.item(),
-            'Loss Frequency L2': loss_f_l2.item(),
-            'Frequency Accuracy': acc.item()
-        }, epoch*len(train_loader) + i)
-        # logger(writer, {'Loss per step': loss.item()}, 'train', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss Frequency': loss_f.item()}, 'train', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss L1': losses_g['l_t'].item()}, 'train', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss L2': losses_g['l_t_2'].item()}, 'train', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss commit_loss': commit_loss.item()}, 'train', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'train', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'train', epoch*len(train_loader) + i)
-        # logger(writer, {'Frequency Accuracy': acc.item()}, 'train', epoch*len(train_loader) + i)
-        
-        if train_generator and not train_discriminator:
+        if epoch % config.common.log_interval == 0: # add the loss to the tensorboard
+            epoch_loss += loss.item()
             metrics.fill_metrics({
-                'Loss Generator': losses_g['l_g'].item(),
-                'Loss Feature': losses_g['l_feat'].item()
-            },epoch*len(train_loader) + i)
-            # logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'train', epoch*len(train_loader) + i)
-            # logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'train', epoch*len(train_loader) + i)
+                'Loss Frequency': freq_loss_dict["total_loss"].item(),
+                # 'Loss L1': losses_g['l_t'].item(),
+                # 'Loss L2': losses_g['l_t_2'].item(),
+                'Loss commit_loss': commit_loss.item(),
+                'Loss Frequency L1': freq_loss_dict["l1_loss"].item(),
+                'Loss Frequency L2': freq_loss_dict["l2_loss"].item(),
+                'Frequency Accuracy': freq_loss_dict["acc"].item(),
+            }, epoch*len(train_loader) + i)
+            for i, d_id in enumerate(ds_id):
+                dataset_id = d_id.item()
+                metrics.fill_metrics({f'Loss L1 {dataset_id}': losses_g['l_t'][d_id].item()}, epoch*len(train_loader) + i)
+                metrics.fill_metrics({f'Loss L2 {dataset_id}': losses_g['l_t_2'][d_id].item()}, epoch*len(train_loader) + i)
+        
+            if train_generator and not train_discriminator:
+                metrics.fill_metrics({
+                    'Loss Generator': losses_g['l_g'].item(),
+                    'Loss Feature': losses_g['l_feat'].item()
+                },epoch*len(train_loader) + i)
 
-        max_gradient = torch.tensor(0.0).to(device)
-        for param in model.parameters():
-            if param.grad is not None:
-                max_gradient = max(max_gradient, param.grad.abs().max().item())
+            max_gradient = torch.tensor(0.0).to(device)
+            for param in model.parameters():
+                if param.grad is not None:
+                    max_gradient = max(max_gradient, param.grad.abs().max().item())
 
-        # log the max gradient
-        metrics.fill_metrics({
-            'Max Gradient': max_gradient
-        }, epoch*len(train_loader) + i)
-        # logger(writer, {'Max Gradient': max_gradient}, 'train', epoch*len(train_loader) + i)
+            # log the max gradient
+            metrics.fill_metrics({
+                'Max Gradient': max_gradient
+            }, epoch*len(train_loader) + i)
 
-    metrics_dict = metrics.compute_and_log_metrics()
-    # log the learning rate
-    metrics_dict['Learning Rate'] = optimizer.param_groups[0]['lr']
-    # logger(writer, {'Learning Rate': optimizer.param_groups[0]['lr']}, 'train', epoch)
     scheduler.step()  
-
-    if train_discriminator:
+    if config.model.train_discriminator and epoch >= config.model.train_discriminator_start_epoch:
         disc_scheduler.step()
 
-    loss_per_epoch = epoch_loss/len(train_loader)
-    print(f"Epoch {epoch}, training loss: {loss_per_epoch}")
+    if epoch % config.common.log_interval == 0:
+        metrics_dict = metrics.compute_and_log_metrics()
+        # log the learning rate
+        metrics_dict['Learning Rate'] = optimizer.param_groups[0]['lr']
+        loss_per_epoch = epoch_loss/len(train_loader)
+        print(f"Epoch {epoch}, training loss: {loss_per_epoch}")
 
-    # log the metrics
-    metrics_dict['Loss'] = loss_per_epoch
-    # logger(writer, {'Loss': loss_per_epoch}, 'train', epoch)
-    logger(writer, metrics_dict, 'train', epoch)
-    metrics.clear_metrics()
+        # log the metrics
+        metrics_dict['Loss'] = loss_per_epoch
+        logger(writer, metrics_dict, 'train', epoch)
+        metrics.clear_metrics()
 
 @torch.no_grad()
 def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
@@ -216,11 +197,21 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
         disc.eval()
     epoch_loss = 0
     all_codes = []
-    for i, item in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
+    # min_val = float('inf')
+    # max_val = float('-inf')
+    # values = set()
+    for i, (item, ds_id) in enumerate(tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch")):
         x = item["x"]
         if x is None:
             continue
         x = x.to(device)
+
+        # min_val = min(min_val, x.min().item())
+        # max_val = max(max_val, x.max().item())
+        # for val in x.view(-1).cpu().numpy():
+        #     if 1 < val < 2:
+        #         values.add(val)
+
         x_hat, codes, commit_loss, codebook_loss = model(x)
         commit_loss = torch.mean(commit_loss)
         codebook_loss = torch.mean(codebook_loss)
@@ -240,23 +231,23 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
                 x_hat, 
                 sample_rate=10,
             )
-        if train_discriminator:
-            loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss
+        # if train_discriminator:
+        #     loss_disc = disc_loss(logits_real, logits_fake) # compute discriminator loss
 
-        loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
-        loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
-        acc = freq_loss_dict["acc"] 
-        loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
+        # loss_f_l1 = freq_loss_dict["l1_loss"] * config.loss.weight_freq
+        # loss_f_l2 = freq_loss_dict["l2_loss"] * config.loss.weight_freq
+        # acc = freq_loss_dict["acc"] 
+        # loss_f = freq_loss_dict["total_loss"] * config.loss.weight_freq
 
-        loss = losses_g['l_t'] * config.loss.weight_l1 + losses_g['l_t_2'] * config.loss.weight_l2 + loss_f 
-        if epoch >= config.loss.commit_start_epoch:
-            loss += commit_loss * config.loss.weight_commit + codebook_loss
+        # loss = losses_g['l_t'] * config.loss.weight_l1 + losses_g['l_t_2'] * config.loss.weight_l2 + freq_loss_dict["total_loss"] * config.loss.weight_freq 
+        # if epoch >= config.loss.commit_start_epoch:
+        #     loss += commit_loss * config.loss.weight_commit + codebook_loss
         
-        if train_discriminator:
-            loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
-            epoch_loss += loss_disc.item()
+        # if train_discriminator:
+        #     loss += losses_g['l_g'] * config.loss.weight_g + losses_g['l_feat'] * config.loss.weight_feat
+        #     epoch_loss += loss_disc.item()
 
-        epoch_loss += loss.item()
+        # epoch_loss += loss.item()
 
         all_codes.append(codes)
         # metrics.fill_metrics({
@@ -268,23 +259,12 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
         #     'Loss Frequency L2': loss_f_l2.item(),
         #     'Frequency Accuracy': acc.item()
         # }, epoch*len(val_loader) + i)
-        # logger(writer, {'Loss per step': loss.item()}, 'val', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss Frequency': loss_f.item()}, 'val', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss L1': losses_g['l_t'].item()}, 'val', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss L2': losses_g['l_t_2'].item()}, 'val', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss commit_loss': commit_loss.item()}, 'val', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss Frequency L1': loss_f_l1.item()}, 'val', epoch*len(train_loader) + i)
-        # logger(writer, {'Loss Frequency L2': loss_f_l2.item()}, 'val', epoch*len(train_loader) + i)
-        # logger(writer, {'Frequency Accuracy': acc.item()}, 'val', epoch*len(train_loader) + i)
         # if train_discriminator:
         #     metrics.fill_metrics({
         #         'Loss Generator': losses_g['l_g'].item(),
         #         'Loss Feature': losses_g['l_feat'].item(),
         #         'Loss Discriminator': loss_disc.item()
         #     }, epoch*len(val_loader) + i)
-            # logger(writer, {'Loss Generator': losses_g['l_g'].item()}, 'val', epoch*len(val_loader) + i)
-            # logger(writer, {'Loss Feature': losses_g['l_feat'].item()}, 'val', epoch*len(val_loader) + i)
-            # logger(writer, {'Loss Discriminator': loss_disc.item()}, 'val', epoch*len(val_loader) + i)
 
         if i == 0:
             S_x = freq_loss_dict["S_x"]
@@ -329,6 +309,10 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
                 raise Exception("User not recognized")
             plt.close(fig)
 
+    # print('num values between 1 and 2: ', len(values))
+    # differences = np.diff(sorted(values)) #2**23 is min difference, #2**26?
+    # breakpoint()
+
     all_codes = torch.cat(all_codes, dim=0) # B, num_codebooks, T
     all_codes = torch.permute(all_codes, (1, 0, 2))
 
@@ -356,52 +340,13 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss):
     writer.add_figure(f"Entropy/{epoch}", fig)
     plt.close(fig)
 
-    # # Create a signal of 2 minutes 
-    # if epoch == 0:   
-    #     x = x[0].cpu().numpy().squeeze()
-    #     fig, ax = plt.subplots(2, 1)
-    #     time = np.arange(0, 1200)
-    #     ax[0].plot(time, x[10000:11200])
-    #     ax[0].set_title("Signal Graph")
-    #     ax[0].set_xlabel("Time")
-    #     ax[0].set_ylabel("Amplitude")
-    #     ax[0].set_ylim(-4, 4)
-    #     ax[1].imshow(S_x.detach().cpu().numpy()[0, :, 10000//50: 11200//50], cmap='jet', aspect='auto')
-    #     ax[1].invert_yaxis()
-    #     ax[1].set_title("Spectrogram")
-    #     fig.tight_layout()
-
-    #     # Add figure to TensorBoard
-    #     writer.add_figure("Signal/original", fig)
-    #     writer.close()
-    #     plt.close(fig)
-
-    # fig, ax = plt.subplots(2, 1)
-    # x_hat = x_hat[0].cpu().numpy().squeeze()
-    # time = np.arange(0, 1200)
-    # ax[0].plot(time, x_hat[10000:11200])
-    # ax[0].set_title("Signal Graph")
-    # ax[0].set_xlabel("Time")
-    # ax[0].set_ylabel("Amplitude")
-    # ax[0].set_ylim(-4, 4)
-    # ax[1].imshow(S_x_hat.detach().cpu().numpy()[0, :, 10000//50: 11200//50], cmap='jet', aspect='auto')
-    # ax[1].invert_yaxis()
-    # ax[1].set_title("Spectrogram")
-    # fig.tight_layout()
-    
-    # writer.add_figure(f"Signal/{epoch}", fig)
-    # writer.close()
-    # plt.close(fig)
-
-    loss_per_epoch = epoch_loss/len(val_loader)
-    print(f"Epoch {epoch}, validation loss: {loss_per_epoch}")
+    # loss_per_epoch = epoch_loss/len(val_loader)
+    # print(f"Epoch {epoch}, validation loss: {loss_per_epoch}")
 
     # log the metrics
     # metrics_dict = metrics.compute_and_log_metrics()
     # metrics_dict['Loss'] = loss_per_epoch
-    # logger(writer, metrics_dict, 'val', epoch)
     metrics.clear_metrics()
-    # logger(writer, {'Loss': loss_per_epoch}, 'val', epoch)
 
 #Logger for tensorboard
 def logger(writer, metrics, phase, epoch_index):
@@ -441,44 +386,92 @@ def init_logger(log_dir):
     return writer
 
 def init_dataset(config):
+    cv = config.dataset.cv
+    max_length = config.dataset.max_length
+    weights = {
+        "shhs2": config.dataset.shhs2,
+        "shhs1": config.dataset.shhs1,
+        "mros1": config.dataset.mros1,
+        "mros2": config.dataset.mros2,
+        "wsc": config.dataset.wsc,
+        "cfs": config.dataset.cfs
+    }
+
     train_datasets = []
     val_datasets = []
     weight_list = []
-    if config.dataset.shhs2 > 0:
-        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        weight_list.append(config.dataset.shhs2)
-    if config.dataset.shhs1 > 0:
-        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        weight_list.append(config.dataset.shhs1)
-    if config.dataset.mros1 > 0:
-        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        weight_list.append(config.dataset.mros1)
-    if config.dataset.mros2 > 0:
-        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        weight_list.append(config.dataset.mros2)
-    if config.dataset.wsc > 0:
-        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        weight_list.append(config.dataset.wsc)
-    if config.dataset.cfs > 0:
-        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        val_datasets.append(BreathingDataset(dataset = "cfs", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
-        weight_list.append(config.dataset.cfs)
+    if weights["shhs2"] > 0:
+        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        # val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        weight_list.append(weights["shhs2"] )
+    if weights["shhs1"] > 0:
+        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        weight_list.append(weights["shhs1"])
+    if weights["mros1"] > 0:
+        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        weight_list.append(weights["mros1"])
+    if weights["mros2"] > 0:
+        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        weight_list.append(weights["mros2"])
+    if weights["wsc"] > 0:
+        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        weight_list.append(weights["wsc"])
+    if weights["cfs"] > 0:
+        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = cv, channel = "thorax", max_length = max_length))
+        weight_list.append(weights["cfs"])
 
     print("Number of training datasets: ", len(train_datasets))
 
     # merge the datasets
     train_dataset = MergedDataset(train_datasets, weight_list, 1, debug = config.dataset.debug)
-    val_dataset = MergedDataset(val_datasets, weight_list, 0.2, debug = config.dataset.debug)
-
     train_loader = DataLoader(train_dataset, batch_size=config.dataset.batch_size, shuffle=True, num_workers=config.dataset.num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=config.dataset.batch_size, shuffle=False, num_workers=config.dataset.num_workers)
+    print(f'Merged dataset size: {len(train_dataset)}')
+    ds_ids = {0: 0, 1: 0, 2: 0, 3:0}
+    for item, ds_id in train_loader:
+        for d_id in ds_id:
+            ds_ids[d_id.item()] += 1
+    print(f'Distribution: {ds_ids}')
+    return train_loader
+    # val_dataset = MergedDataset(val_datasets, weight_list, 0.2, debug = True)
 
-    return train_loader, val_loader
+    # train_datasets = []
+    # val_datasets = []
+    # weight_list = []
+    # if config.dataset.shhs2 > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.shhs2)
+    # if config.dataset.shhs1 > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.shhs1)
+    # if config.dataset.mros1 > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.mros1)
+    # if config.dataset.mros2 > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.mros2)
+    # if config.dataset.wsc > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.wsc)
+    # if config.dataset.cfs > 0:
+    #     train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     val_datasets.append(BreathingDataset(dataset = "cfs", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+    #     weight_list.append(config.dataset.cfs)
+
+    # print("Number of training datasets: ", len(train_datasets))
+    # breakpoint()
+
+    # # merge the datasets
+    # train_dataset = MergedDataset(train_datasets, weight_list, 1, debug = config.dataset.debug)
+    # val_dataset = MergedDataset(val_datasets, weight_list, 0.2, debug = config.dataset.debug)
+    # train_loader = DataLoader(train_dataset, batch_size=config.dataset.batch_size, shuffle=True, num_workers=config.dataset.num_workers)
+    # val_loader = DataLoader(val_dataset, batch_size=config.dataset.batch_size, shuffle=False, num_workers=config.dataset.num_workers)
+
+    # return train_loader, val_loader
 
 def init_model(config):
     model = EncodecModel._get_model(
@@ -502,7 +495,7 @@ def init_model(config):
     )
 
     # log model, disc model parameters and train mode
-    print(model)
+    # print(model)
     # print(disc_model)
     # breakpoint()
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
@@ -542,6 +535,7 @@ if __name__ == "__main__":
     writer = init_logger(log_dir)
 
     torch.manual_seed(config.common.seed)
+    random.seed(config.common.seed)
     data_parallel = config.distributed.data_parallel
     device = torch.device("cuda")
     # breakpoint()
@@ -549,7 +543,8 @@ if __name__ == "__main__":
     metrics_args = MetricsArgs(num_datasets=1, device=device)
     metrics = Metrics(metrics_args)
 
-    train_loader, val_loader = init_dataset(config)
+    # train_loader, val_loader = init_dataset(config)
+    train_loader = init_dataset(config)
     model, disc = init_model(config)
     model = model.to(device)
     if config.model.train_discriminator:
@@ -579,13 +574,13 @@ if __name__ == "__main__":
     freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
     # freq_loss = ReconstructionLosses(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, hop_length=config.loss.hop_length, win_length=config.loss.win_length, device=device)
 
-    test(metrics, 0, model, disc, val_loader, config, writer, freq_loss=freq_loss)
+    test(metrics, 0, model, disc, train_loader, config, writer, freq_loss=freq_loss)
     for epoch in tqdm(range(1, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config=config, writer=writer, freq_loss=freq_loss,)
-        if epoch % config.common.test_interval == 0:
-            test(metrics, epoch,model,disc, val_loader,config,writer, freq_loss=freq_loss)
+        # if epoch % config.common.test_interval == 0:
         # save checkpoint and epoch
         if epoch % config.checkpoint.save_every == 0:
+            test(metrics, epoch,model,disc, train_loader,config,writer, freq_loss=freq_loss)
             if config.distributed.data_parallel:
                 torch.save(model.module.state_dict(), f"{log_dir}/model.pth")
                 if config.model.train_discriminator:
