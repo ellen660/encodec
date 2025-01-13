@@ -66,6 +66,8 @@ class Metrics():
         self.metrics_dict = {
             # "Loss per step": {},
             "Loss Frequency": {},
+            "Loss L1": {},
+            "Loss L2": {},
             "Loss L1 0": {},
             "Loss L2 0": {},
             "Loss L1 1": {},
