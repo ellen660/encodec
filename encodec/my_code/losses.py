@@ -35,8 +35,8 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
         loss: total loss
     """
     relu = torch.nn.ReLU()
-    l1Loss = torch.nn.L1Loss(reduction='mean')
-    l2Loss = torch.nn.MSELoss(reduction='mean')
+    l1Loss = torch.nn.L1Loss(reduction='none')
+    l2Loss = torch.nn.MSELoss(reduction='none')
     # Collect losses as defined in paper for use with balancer
     # l_t - L1 distance between the target and compressed audio over the time domain
     # l_f - linear combination between the L1 and L2 losses over the mel-spectrogram using several time scales
@@ -47,14 +47,14 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
     # l_g = torch.tensor([0.0], device='cuda', requires_grad=True)
     # l_feat = torch.tensor([0.0], device='cuda', requires_grad=True)
 
-    l_t = 0
-    l_t_2 = 0
     l_g = 0
     l_feat = 0
 
     #time domain loss, output_wav is the output of the generator
-    l_t = l1Loss(input_wav, output_wav) 
-    l_t_2 = l2Loss(input_wav, output_wav)
+    l_t = l1Loss(input_wav, output_wav).mean(dim=(1,2))
+    l_t_2 = l2Loss(input_wav, output_wav).mean(dim=(1,2))
+    l1 = torch.nn.L1Loss(reduction='mean')(input_wav, output_wav)
+    l2 = torch.nn.MSELoss(reduction='mean')(input_wav, output_wav)
     sigmoid = torch.nn.Sigmoid()
 
     #frequency domain loss, window length is 2^i, hop length is 2^i/4, i \in [5,11]. combine l1 and l2 loss
@@ -96,6 +96,8 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
     return {
         'l_t': l_t,
         'l_t_2': l_t_2,
+        'l_1': l1,
+        'l_2': l2,
         # 'l_f': l_f,
         'l_g': l_g,
         'l_feat': l_feat,

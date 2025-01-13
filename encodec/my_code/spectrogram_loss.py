@@ -185,11 +185,11 @@ class ReconstructionLosses(nn.Module):
             'total_loss': total_loss,
             'l1_loss': 1/len(self.losses) * sum([result['l1_loss'] for result in results]),
             'l2_loss': 1/len(self.losses) * sum([result['l2_loss'] for result in results]),
-            'acc': 1/len(self.losses) * sum([result['acc'] for result in results]),
-            'Sx_breathing_rate': results[0]['Sx_breathing_rate'],
-            'Sx_hat_breathing_rate': results[0]['Sx_hat_breathing_rate'],
-            'S_x': results[0]['S_x'],
-            'S_x_hat': results[0]['S_x_hat']
+            'acc': results[1]['acc'],
+            'Sx_breathing_rate': results[1]['Sx_breathing_rate'],
+            'Sx_hat_breathing_rate': results[1]['Sx_hat_breathing_rate'],
+            'S_x': results[1]['S_x'],
+            'S_x_hat': results[1]['S_x_hat']
         }
 
         return final_results

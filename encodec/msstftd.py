@@ -142,6 +142,8 @@ def test():
 
     y_disc_r, fmap_r = disc(y)
     y_disc_gen, fmap_gen = disc(y_hat)
+
+    breakpoint()
     # breakpoint()
     assert len(y_disc_r) == len(y_disc_gen) == len(fmap_r) == len(fmap_gen) == disc.num_discriminators
 
