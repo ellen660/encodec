@@ -43,6 +43,7 @@ def init_model(config):
         segment=eval(config.model.segment), name=config.model.name,
         ratios=config.model.ratios,
         bins=config.model.bins,
+        dimension=config.model.dimension,
     )
     # disc_model = MultiScaleSTFTDiscriminator(
     #     in_channels=config.model.channels,
@@ -74,8 +75,11 @@ if __name__ == "__main__":
     # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s"
     # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s"
 
-    log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_disc"
-    save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_disc"
+    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_disc"
+    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_disc"
+
+    log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_new"
+    save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_new"
 
     if not os.path.exists(save_dir):
         os.mkdir(save_dir)
@@ -124,11 +128,11 @@ if __name__ == "__main__":
         x = item["x"]
         filename = item["filename"]
         x = x.to(device)
-        x_hat, codes, _ = model(x)
+        x_hat, codes, _, _ = model(x)
         x_hat = x_hat.squeeze().cpu().detach().numpy()
 
         # save the prediction in the folder
         np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename[0]), data=x_hat, fs = 10)
 
-        # save the codes in the folder
-        np.savez(os.path.join(save_dir, "shhs2_new", "codes", filename[0]), data=codes.squeeze().cpu().detach().numpy(), fs = 10/compression_ratio)
+        # # save the codes in the folder
+        # np.savez(os.path.join(save_dir, "shhs2_new", "codes", filename[0]), data=codes.squeeze().cpu().detach().numpy(), fs = 10/compression_ratio)
