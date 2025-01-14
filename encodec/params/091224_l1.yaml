@@ -12,23 +12,24 @@ common:
   gradient_clipping: True
 
 dataset:
-  batch_size: 16 #for no discrim
+  batch_size: 80 #for no discrim
   #for gpu10, 88 - 24
   #for gpu07, 48 - 8
   max_length: 144000 # 4 hours at 10 hz
   num_workers: 10
   debug: False
   cv: 0
-  shhs1: 0.
+  mgh: 1.
+  shhs1: 1.
   shhs2: 1.
   mros1: 1.
   mros2: 1.
   wsc: 1.
-  cfs: 0.
-  mgh: 0.
-  bwh: 0.
-  thorax: 1.
-  abdominal: 0.
+  cfs: 1.
+  bwh: 1.
+  thorax: 0.5
+  abdominal: 0.5
+  rf: 0.
 
 checkpoint:
   # save: False

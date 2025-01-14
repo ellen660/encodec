@@ -1,6 +1,7 @@
 from model import EncodecModel
 from data import MergedDataset
 from data.dataset import BreathingDataset
+from data.bwh import BwhDataset
 from my_code.losses import loss_fn_l1, loss_fn_l2, total_loss, disc_loss
 from my_code.metrics import Metrics, MetricsArgs
 from my_code.schedulers import LinearWarmupCosineAnnealingLR, WarmupScheduler
@@ -434,6 +435,9 @@ def init_dataset(config):
     if weights["cfs"] > 0:
         train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["cfs"])
+    if weights["bwh"] > 0:
+        train_datasets.append(BwhDataset(dataset = "bwh_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
+        weight_list.append(weights["bwh"])
 
     # selected channels
     # channels = dict()
@@ -486,7 +490,7 @@ def init_dataset(config):
     train_dataset = MergedDataset(train_datasets, weight_list, 1, debug = config.dataset.debug)
     train_loader = DataLoader(train_dataset, batch_size=config.dataset.batch_size, shuffle=True, num_workers=config.dataset.num_workers)
     print(f'Merged dataset size: {len(train_dataset)}')
-    ds_ids = {0: 0, 1: 0, 2: 0, 3:0}
+    ds_ids = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0}
     for item, ds_id in train_loader:
         for d_id in ds_id:
             ds_ids[d_id.item()] += 1
@@ -536,6 +540,9 @@ def set_args():
     return parser.parse_args()
 
 if __name__ == "__main__":
+
+    # BwhDataset(dataset = "bwh_new", mode = "train", cv = 0)
+    # breakpoint()
 
     args = set_args()
     user_name = os.getlogin()
