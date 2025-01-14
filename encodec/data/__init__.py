@@ -27,4 +27,4 @@ class MergedDataset(Dataset):
         item_id = torch.randint(0, len(choosed_ds), (1,))[0].item()
         item = choosed_ds[item_id]
 
-        return item
+        return item, ds_id

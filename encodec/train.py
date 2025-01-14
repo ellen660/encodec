@@ -149,10 +149,10 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
                 'Loss Frequency L2': freq_loss_dict["l2_loss"].item(),
                 'Frequency Accuracy': freq_loss_dict["acc"].item(),
             }, epoch*len(train_loader) + i)
-            for i, d_id in enumerate(ds_id):
+            for j, d_id in enumerate(ds_id):
                 dataset_id = d_id.item()
-                metrics.fill_metrics({f'Loss L1 {dataset_id}': losses_g['l_t'][d_id].item()}, epoch*len(train_loader) + i)
-                metrics.fill_metrics({f'Loss L2 {dataset_id}': losses_g['l_t_2'][d_id].item()}, epoch*len(train_loader) + i)
+                metrics.fill_metrics({f'Loss L1 {dataset_id}': losses_g['l_t'][j].item()}, epoch*len(train_loader) + i)
+                metrics.fill_metrics({f'Loss L2 {dataset_id}': losses_g['l_t_2'][j].item()}, epoch*len(train_loader) + i)
         
             if train_generator and not train_discriminator:
                 metrics.fill_metrics({
@@ -395,7 +395,8 @@ def init_dataset(config):
         "mros1": config.dataset.mros1,
         "mros2": config.dataset.mros2,
         "wsc": config.dataset.wsc,
-        "cfs": config.dataset.cfs
+        "cfs": config.dataset.cfs,
+        "bwh": config.dataset.bwh
     }
 
     train_datasets = []
@@ -415,23 +416,23 @@ def init_dataset(config):
         # val_datasets.append(BreathingDataset(dataset = "mgh_new", mode = "val", cv = config.dataset.cv, channels = mgh_channels, max_length = config.dataset.max_length))
         weight_list.append(weights["mgh"])
     if weights["shhs2"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
         # val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
         weight_list.append(weights["shhs2"] )
     if weights["shhs1"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["shhs1"])
     if weights["mros1"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["mros1"])
     if weights["mros2"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["mros2"])
     if weights["wsc"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = cv, channel = channels, max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["wsc"])
     if weights["cfs"] > 0:
-        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = cv, channel = channels, max_length = max_length))
+        train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["cfs"])
 
     # selected channels

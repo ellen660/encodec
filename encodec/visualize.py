@@ -139,7 +139,7 @@ if __name__ == "__main__":
 
     # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241216/233026'
     # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241218/223733'
-    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241219/235510' #best model L1 0.06
+    # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241219/235510' #best model L1 0.06
     # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241221/183951' #30 second l1 0.3
     # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241221/201924' #whole dataset 30 second l1 0.3
     # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241223/121731' #10 second 500 samples L1 0.1
@@ -151,7 +151,7 @@ if __name__ == "__main__":
     # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20241229/184424' #30 second model L1 0.1
     # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250102/214627' #whole dataset w/ discriminator, 30 second model L1 0.1
     # log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250104/225043' #30 second discrim good L1 0.1
-
+    log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250106/161502' #whole dataset L1 0.7
     # Load the YAML file
     config = load_config(f'{log_dir}/config.yaml', log_dir)
 
@@ -249,14 +249,14 @@ if __name__ == "__main__":
 
         axs1[0].plot(x_time, x[0].cpu().numpy().squeeze())
         axs1[0].set_title('Original')
-        axs1[0].set_ylim(-4, 4)
+        axs1[0].set_ylim(-6, 6)
         axs1[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, num_freq//2], vmin=min_spec_val, vmax=max_spec_val)
         axs1[1].invert_yaxis()
         axs1[1].set_title('Original Spectrogram')
 
         axs1[2].plot(x_time, x_hat[0].detach().cpu().numpy().squeeze())
         axs1[2].set_title('Reconstructed')
-        axs1[2].set_ylim(-4, 4)
+        axs1[2].set_ylim(-6, 6)
         axs1[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, num_freq//2], vmin=min_spec_val, vmax=max_spec_val)
         axs1[3].invert_yaxis()
         axs1[3].set_title('Reconstructed Spectrogram')
@@ -265,10 +265,13 @@ if __name__ == "__main__":
         fig1.savefig(f'/data/scratch/ellen660/encodec/encodec/{i}.png')
         plt.close(fig1)
 
-        # for n_q in range(1, 34, 4):
-        for n_q in range(1,9):
+        l1_losses = []
+        freq_losses = []
+
+        for n_q in range(1, 34, 4):
+        # for n_q in range(1,9):
             output = model.quantizer.intermediate_results(x=emb,n_q=n_q)
-            # n_q = n_q//4
+            n_q = n_q//4
             out = model.decoder(output['quantized'])
             l1_loss = loss_fn_l1(x, out)
             freq_loss_dict = freq_loss(x, out)
@@ -276,6 +279,8 @@ if __name__ == "__main__":
             # print(f'out sie: {out.size()}')
             S_x = freq_loss_dict["S_x"]
             S_x_hat = freq_loss_dict["S_x_hat"]
+            l1_losses.append(l1_loss.cpu().detach().numpy())
+            freq_losses.append(freq_loss_dict["l1_loss"].cpu().detach().numpy())
             
             _, num_freq, _ = S_x.size()
             S_x = S_x[:, :num_freq//2, :]
@@ -299,12 +304,12 @@ if __name__ == "__main__":
             axs[n_q,0].plot(time, x[0].detach().cpu().numpy().squeeze()[10000:10300], alpha=0.3)
             axs[n_q,0].set_xlabel("Time")
             axs[n_q,0].set_title(f"Signal n_q={n_q*4}")
-            axs[n_q,0].set_ylim(-2, 2)
+            axs[n_q,0].set_ylim(-6, 6)
             axs[n_q,1].plot(out.detach().cpu().numpy().squeeze()[10000:10100])
             #plot original signal with transparent
             axs[n_q,1].plot(x[0].detach().cpu().numpy().squeeze()[10000:10100], alpha=0.3)
             axs[n_q,1].set_title(f"Signal n_q={n_q*4}, , Loss = {l1_loss.item()}")
-            axs[n_q,1].set_ylim(-2, 2)
+            axs[n_q,1].set_ylim(-6, 6)
 
             axs[n_q,3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto')
             axs[n_q,3].invert_yaxis()
@@ -332,6 +337,16 @@ if __name__ == "__main__":
         # fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
         print(f'saving to /data/scratch/ellen660/encodec/encodec/visualize_{i}.png')
         fig.savefig(f'/data/scratch/ellen660/encodec/encodec/visualize_{i}.png')
+        plt.close(fig)
+
+        #plot the l1_losses and freq_losses
+        fig, axs = plt.subplots(2, 1, figsize=(10, 10))
+        axs[0].plot(l1_losses)
+        axs[0].set_title("L1 Losses")
+        axs[1].plot(freq_losses)
+        axs[1].set_title("Frequency Losses")
+        fig.tight_layout()
+        fig.savefig(f'/data/scratch/ellen660/encodec/encodec/visualize_losses_{i}.png')
         plt.close(fig)
 
 
