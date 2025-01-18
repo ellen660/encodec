@@ -20,11 +20,15 @@ def sliding_std(data, window_size):
 
     return np.sqrt(np.maximum(window_var, 0))  # Avoid numerical errors
 
-max_length = 10 * 60 * 60 * 4
-fs = 10
+# max_length = 10 * 60 * 60 * 4
+# fs = 10
+max_length = 200 * 60 * 60 * 4
+fs = 200
 
-root = "/data/netmit/wifall/ADetect/data"
-datasets = ["shhs2_new", "shhs1_new", "mros1_new", "mros2_new", "wsc_new", "cfs"]
+# root = "/data/netmit/wifall/ADetect/data"
+root = "/data/netmit/sleep_lab"
+datasets = ["ali_2"]
+# datasets = ["shhs2_new", "shhs1_new", "mros1_new", "mros2_new", "wsc_new", "cfs"]
 
 fns_to_ignore = []
 
@@ -67,5 +71,5 @@ for ds in datasets:
             #     break
 
 # save filenames to ignore to a .py file
-with open("fns_to_ignore.py", "w") as f:
+with open("fns_to_ignore_bwh.py", "w") as f:
     f.write(f"fns_to_ignore = {json.dumps(fns_to_ignore)}")

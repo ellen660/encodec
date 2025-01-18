@@ -78,7 +78,7 @@ def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_
                 #min is 0 if logits_fake is 1
                 #logits_fake 0.48 means l_g is 0.52
             for tt2 in range(len(fmap_real[tt1])): # len(fmap_real[tt1]) = 5
-                l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2].detach()))
+                l_feat = l_feat + torch.nn.L1Loss(reduction='mean')(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2].detach()))
                 # l_feat = l_feat + l1Loss(fmap_real[tt1][tt2], fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2]))
                 # l_feat = l_feat + l1Loss(fmap_real[tt1][tt2].detach(), fmap_fake[tt1][tt2]) / torch.mean(torch.abs(fmap_real[tt1][tt2]))
 

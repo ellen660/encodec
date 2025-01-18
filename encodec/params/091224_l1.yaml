@@ -12,12 +12,12 @@ common:
   gradient_clipping: True
 
 dataset:
-  batch_size: 80 #for no discrim
+  batch_size: 24 #for no discrim
   #for gpu10, 88 - 24
   #for gpu07, 48 - 8
   max_length: 144000 # 4 hours at 10 hz
   num_workers: 10
-  debug: False
+  debug: True
   cv: 0
   mgh: 1.
   shhs1: 1.
@@ -26,7 +26,7 @@ dataset:
   mros2: 1.
   wsc: 1.
   cfs: 1.
-  bwh: 1.
+  bwh: 0.
   thorax: 0.5
   abdominal: 0.5
   rf: 0.
@@ -36,7 +36,7 @@ checkpoint:
   save_every: 50
 
 optimization:
-  lr: 2e-4 #base learning rate 1e-4
+  lr: 1e-4 #base learning rate 1e-4
   # weight_decay: 1e-6
   disc_lr: 3e-4 #base discriminator learning rate 3e-4
 
@@ -70,10 +70,10 @@ model:
   bins: 512
   dimension: 256
   target_bandwidths: [0.32] #0.1 is 10 codebooks, 0.2 is 20 codebooks
-  train_discriminator: False # you can set it to 2/3 and other number to train discriminator only
+  train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
   train_discriminator_start_epoch: 60
   train_discriminator_for: 0
-  train_discriminator_prob: 0.25
+  train_discriminator_prob: 0.3
   disc_hop_lengths: [128, 256]
   disc_win_lengths: [512, 1024]
   disc_n_ffts: [1024, 1024]

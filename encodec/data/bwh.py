@@ -17,14 +17,13 @@ class BwhDataset(Dataset):
     processed_signal = f'{root}/bwh_encodec'
     if not os.path.exists(processed_signal):
         os.makedirs(processed_signal)
-
     NumCv = 4
         
     def __init__(self, dataset="bwh_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length=10 * 60 * 60 * 4):
         channels = {"thorax": 1.0}
         self.dataset = dataset
         self.mode = mode
-        assert self.mode == 'train', 'Only support train mode'
+        assert self.mode in ['train', 'test'], 'Only support train or test mode'
         self.cv = cv
         self.channels = channels # dictionary of channel names and their weights
         self.ds_dir = self.root
@@ -73,7 +72,7 @@ class BwhDataset(Dataset):
         elif mode == "val":
             self.file_list = val_list
         elif mode == "test":
-            self.file_list = val_list
+            self.file_list = train_list
         else:
             raise ValueError(f"Invalid mode: {mode}")
 
@@ -108,12 +107,18 @@ class BwhDataset(Dataset):
 
         # now randomly select a channel, sampling based on their weights
         selected_channel = np.random.choice(list(self.channels.keys()), p=list(self.channels.values()))
-        # filepath = os.path.join(self.ds_dir, selected_channel, filename)
-        filepath = os.path.join(self.processed_signal, filename)
-        breathing = np.load(filepath)['data'].squeeze()
-        fs = np.load(filepath)['fs']
-        # print(f'breathing shape: {breathing.shape}, fs: {fs}')
-        assert fs == 10, "Sampling rate is not 10Hz"
+        if self.mode == "train":
+            filepath = os.path.join(self.processed_signal, filename)
+            breathing = np.load(filepath)['data'].squeeze()
+            fs = np.load(filepath)['fs']
+            # print(f'breathing shape: {breathing.shape}, fs: {fs}')
+            assert fs == 10, "Sampling rate is not 10Hz"
+        if self.mode == "test":
+            filepath = os.path.join(self.ds_dir, selected_channel, filename)
+            breathing = np.load(filepath)['data'].squeeze()
+            fs = np.load(filepath)['fs']
+            assert fs == 200, "Sampling rate is not 200Hz"
+            breathing = self.process_signal(breathing, fs)
         
         # if self.mode == "train":
         #     breathing_length = breathing.shape[0] - self.max_length
@@ -137,6 +142,13 @@ class BwhDataset(Dataset):
         # breathing = breathing[:self.max_length] #4 hours
         # breathing = self.process_signal(breathing, fs)
         breathing = torch.tensor(breathing, dtype=torch.float32)
+        #randomly augment by multiplying by -1
+        positive_count = (breathing > 0).sum().item()
+        negative_count = (breathing < 0).sum().item()
+        if positive_count > negative_count:
+            breathing = breathing * -1 
+        # if torch.rand(1).item() < 0.5:
+        #     breathing = breathing * -1
 
         item = {
             "x": None,
