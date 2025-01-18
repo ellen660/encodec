@@ -559,13 +559,13 @@ if __name__ == "__main__":
     freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
     # freq_loss = ReconstructionLosses(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, hop_length=config.loss.hop_length, win_length=config.loss.win_length, device=device)
 
-    test(metrics, 0, model, disc, train_loader, config, writer, freq_loss=freq_loss)
+    test(metrics, 0, model, disc, train_loader, config, writer, freq_loss=freq_loss, label_mapping=label_mapping)
     for epoch in tqdm(range(1, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config=config, writer=writer, freq_loss=freq_loss, label_mapping=label_mapping)
         # if epoch % config.common.test_interval == 0:
         # save checkpoint and epoch
         if epoch % config.checkpoint.save_every == 0:
-            test(metrics, epoch,model,disc, train_loader,config,writer, freq_loss=freq_loss)
+            test(metrics, epoch,model,disc, train_loader,config,writer, freq_loss=freq_loss, label_mapping=label_mapping)
             if config.distributed.data_parallel:
                 torch.save(model.module.state_dict(), f"{log_dir}/model.pth")
                 if config.model.train_discriminator:
