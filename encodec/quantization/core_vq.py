@@ -175,7 +175,7 @@ class EuclideanCodebook(nn.Module):
         return x
 
     # TODO: ERROR! every segment is getting mapped to the same index
-    def quantize(self, x):
+    def quantize(self, x, return_soft=True, tau=0.5):
         embed = self.embed.t()
 
         dist = -(
@@ -184,8 +184,15 @@ class EuclideanCodebook(nn.Module):
             + embed.pow(2).sum(0, keepdim=True)
         )
 
+        # if return_soft:
+        #     logits = dist/tau
+        #     soft_targets = F.softmax(logits, dim=-1)
+        # else:
+        #     soft_targets = torch.tensor(0.0).to(x.device)
+
         embed_ind = dist.max(dim=-1).indices
         return embed_ind
+        # return embed_ind, soft_targets
 
     def postprocess_emb(self, embed_ind, shape):
         return embed_ind.view(*shape[:-1])
@@ -199,6 +206,7 @@ class EuclideanCodebook(nn.Module):
         # pre-process
         x = self.preprocess(x)
         # quantize
+        # embed_ind, soft_targets = self.quantize(x)
         embed_ind = self.quantize(x)
         # post-process
         embed_ind = self.postprocess_emb(embed_ind, shape)
@@ -214,15 +222,19 @@ class EuclideanCodebook(nn.Module):
         quantize = self.dequantize(embed_ind)
         return quantize
 
-    def forward(self, x):
+    def forward(self, x, return_soft=True, tau=1.0):
         shape, dtype = x.shape, x.dtype
         x = self.preprocess(x)
 
         self.init_embed_(x)
 
-        embed_ind = self.quantize(x)
+        # embed_ind, soft_targets = self.quantize(x, return_soft, tau)
+        embed_ind = self.quantize(x, return_soft, tau)
         embed_onehot = F.one_hot(embed_ind, self.codebook_size).type(dtype)
         embed_ind = self.postprocess_emb(embed_ind, shape)
+        # print(f'emb {embed_ind.shape}')
+        # print(f'soft {soft_targets.shape}')
+        # sys.exit()
         quantize = self.dequantize(embed_ind)
 
         if self.training:
@@ -239,6 +251,7 @@ class EuclideanCodebook(nn.Module):
             embed_normalized = self.embed_avg / cluster_size.unsqueeze(1)
             self.embed.data.copy_(embed_normalized)
 
+        # return quantize, embed_ind, soft_targets
         return quantize, embed_ind
 
 
@@ -300,12 +313,13 @@ class VectorQuantization(nn.Module):
         quantize = rearrange(quantize, "b n d -> b d n")
         return quantize
 
-    def forward(self, x):
+    def forward(self, x, return_soft=True, tau=0.5):
         device = x.device
         x = rearrange(x, "b d n -> b n d")
         x = self.project_in(x)
 
-        quantize, embed_ind = self._codebook(x)
+        # quantize, embed_ind, soft_targets = self._codebook(x, return_soft, tau)
+        quantize, embed_ind = self._codebook(x, return_soft, tau)
 
         if self.training:
             quantize = x + (quantize - x).detach()
@@ -330,6 +344,7 @@ class VectorQuantization(nn.Module):
         quantize = self.project_out(quantize)
         quantize = rearrange(quantize, "b n d -> b d n")
         return quantize, embed_ind, loss
+        # return quantize, embed_ind, loss, soft_targets
 
 # Factorized codes (ViT-VQGAN) Project input into low-dimensional space
         z_e = self.in_proj(z)  # z_e : (B x D x T)
@@ -352,9 +367,11 @@ class ResidualVectorQuantization(nn.Module):
     """
     def __init__(self, *, num_quantizers, **kwargs):
         super().__init__()
-        self.layers = nn.ModuleList(
-            [VectorQuantization(**kwargs) for _ in range(num_quantizers)]
-        )
+        codebook = VectorQuantization(**kwargs)
+        # self.layers = nn.ModuleList(
+        #     [VectorQuantization(**kwargs) for _ in range(num_quantizers)]
+        # )
+        self.layers = nn.ModuleList([codebook for _ in range(num_quantizers)])
     
     @property
     def codebooks(self):
@@ -365,17 +382,21 @@ class ResidualVectorQuantization(nn.Module):
             count += 1
         print(f'codebooks {codebooks}')
 
-    def forward(self, x, n_q: tp.Optional[int] = None):
+    def forward(self, x, n_q: tp.Optional[int] = None, return_quantized=False, return_soft=False, tau=0.1):
+        # print(f'tau {tau}')
         quantized_out = 0.0
         residual = x
 
         all_losses = []
         all_indices = []
+        quantized_stack = [] 
+        soft = []
 
         n_q = n_q or len(self.layers)
 
         for layer in self.layers[:n_q]:
-            quantized, indices, loss = layer(residual)
+            # quantized, indices, loss, soft_targets = layer(residual, return_soft, tau)
+            quantized, indices, loss = layer(residual, return_soft, tau)
 
             #fix issue at https://github.com/facebookresearch/encodec/issues/25
             residual = residual - quantized
@@ -385,9 +406,13 @@ class ResidualVectorQuantization(nn.Module):
 
             all_indices.append(indices)
             all_losses.append(loss)
+            quantized_stack.append(quantized)
+            # soft.append(soft_targets)
 
         out_losses, out_indices = map(torch.stack, (all_losses, all_indices))
-        return quantized_out, out_indices, out_losses
+        if return_quantized:
+            return quantized_out, out_indices, out_losses, torch.stack(quantized_stack), #torch.stack(soft)
+        return quantized_out, out_indices, out_losses, #torch.stack(soft)
 
     def encode(self, x: torch.Tensor, n_q: tp.Optional[int] = None) -> torch.Tensor:
         residual = x
@@ -407,6 +432,7 @@ class ResidualVectorQuantization(nn.Module):
         return out_indices
 
     def decode(self, q_indices: torch.Tensor, n_q=None) -> torch.Tensor:
+        #N, B, T
         if n_q is None:
             n_q = len(self.layers)
         quantized_out = torch.tensor(0.0, device=q_indices.device)
@@ -417,3 +443,94 @@ class ResidualVectorQuantization(nn.Module):
             quantized = layer.decode(indices)
             quantized_out = quantized_out + quantized
         return quantized_out
+
+
+# import random
+# class ResidualVectorQuantization(nn.Module):
+#     """Residual vector quantization implementation.
+#     Follows Algorithm 1. in https://arxiv.org/pdf/2107.03312.pdf
+#     """
+#     def __init__(self, *, num_quantizers, **kwargs):
+#         super().__init__()
+#         #two codebooks
+#         codebook = VectorQuantization(**kwargs)
+#         codebook2 = VectorQuantization(**kwargs)
+#         # codebook3 = VectorQuantization(**kwargs)
+#         self.layers = nn.ModuleList([codebook])
+#         #extend codebook2 for n_q > 2
+#         for _ in range(num_quantizers-1):
+#             self.layers.append(codebook2)
+#         # self.layers = nn.ModuleList(
+#         #     [VectorQuantization(**kwargs) for _ in range(num_quantizers)]
+#         # )
+#         #empty module liest
+#         # self.layers = nn.ModuleList()
+#         # for _ in range(num_quantizers//4):
+#         #     codebook = VectorQuantization(**kwargs)
+#         #     for _ in range(4):
+#         #         self.layers.append(codebook)
+
+#     def forward(self, x, n_q: tp.Optional[int] = None):
+#         quantized_out = 0.0
+#         residual = x
+
+#         all_losses = []
+#         all_indices = []
+
+#         n_q = n_q or len(self.layers)
+        
+#         for i in range(1):
+#             layer = self.layers[i]
+#             quantized, indices, loss = layer(residual)
+#             residual = residual - quantized
+#             quantized_out = quantized_out + quantized
+
+#             all_indices.append(indices)
+#             all_losses.append(loss)
+        
+#         shuffled_layers = list(range(len(self.layers[1:n_q])))
+#         random.shuffle(shuffled_layers)
+#         for i in shuffled_layers:
+#             layer = self.layers[1+i]
+#             quantized, indices, loss = layer(residual)
+#             residual = residual - quantized
+#             quantized_out = quantized_out + quantized
+
+#             all_indices.append(indices)
+#             all_losses.append(loss)
+
+#         out_losses, out_indices = map(torch.stack, (all_losses, all_indices))
+#         return quantized_out, out_indices, out_losses
+
+#     def encode(self, x: torch.Tensor, n_q: tp.Optional[int] = None) -> torch.Tensor:
+#         residual = x
+#         all_indices = []
+#         n_q = n_q or len(self.layers)
+#         for layer in self.layers[:n_q]:
+#             indices = layer.encode(residual)
+#             quantized = layer.decode(indices)
+#             # print(f'indices, {indices}')
+#             # print(f'residual {residual}')
+#             # print(f'quantized {quantized}')
+#             residual = residual - quantized
+#             all_indices.append(indices)
+#         out_indices = torch.stack(all_indices)
+
+#         # sys.exit()
+#         return out_indices
+
+#     def decode(self, q_indices: torch.Tensor, n_q=None) -> torch.Tensor:
+#         #N, B, T
+#         if n_q is None:
+#             n_q = len(self.layers)
+#         quantized_out = torch.tensor(0.0, device=q_indices.device)
+#         for i, indices in enumerate(q_indices):
+#             if i >= n_q:
+#                 break
+#             layer = self.layers[i]
+#             quantized = layer.decode(indices)
+#             quantized_out = quantized_out + quantized
+#             # print(f'indices {indices}')
+#             # print(f'quantized {quantized}')
+#             # breakpoint()
+#         return quantized_out

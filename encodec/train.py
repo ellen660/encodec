@@ -384,9 +384,13 @@ def load_config(filepath, log_dir=None):
                 yaml.dump(config_dict, file)
     return ConfigNamespace(config_dict)
 
-def init_logger(log_dir):
+def init_logger(log_dir, resume=False):
     print(f'log_dir: {log_dir}')
-    writer = SummaryWriter(log_dir=log_dir)
+    if resume:
+        # Resume logging
+        writer = SummaryWriter(log_dir=log_dir, purge_step=None)  # Prevents overwriting
+    else:
+        writer = SummaryWriter(log_dir=log_dir)
     return writer
 
 def init_dataset(config):
@@ -417,43 +421,50 @@ def init_dataset(config):
         mgh_channels = channels.copy()
         # mgh_channels['rf'] = config.dataset.rf
         train_datasets.append(BreathingDataset(dataset = "mgh_train_encodec", mode = "train", cv = cv, channels = mgh_channels, max_length = max_length))
-        # val_datasets.append(BreathingDataset(dataset = "mgh_new", mode = "val", cv = config.dataset.cv, channels = mgh_channels, max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "mgh_train_encodec", mode = "val", cv = cv, channels = mgh_channels, max_length = max_length))
         weight_list.append(weights["mgh"])
     if weights["shhs2"] > 0:
         train_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
-        # val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = config.dataset.cv, channel = "thorax", max_length = config.dataset.max_length))
+        val_datasets.append(BreathingDataset(dataset = "shhs2_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["shhs2"] )
     if weights["shhs1"] > 0:
         train_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
+        val_datasets.append(BreathingDataset(dataset = "shhs1_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["shhs1"])
     if weights["mros1"] > 0:
         train_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
+        val_datasets.append(BreathingDataset(dataset = "mros1_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["mros1"])
     if weights["mros2"] > 0:
         train_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
+        val_datasets.append(BreathingDataset(dataset = "mros2_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["mros2"])
     if weights["wsc"] > 0:
         train_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
+        val_datasets.append(BreathingDataset(dataset = "wsc_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["wsc"])
     if weights["cfs"] > 0:
         train_datasets.append(BreathingDataset(dataset = "cfs", mode = "train", cv = cv, channels = channels, max_length = max_length))
+        val_datasets.append(BreathingDataset(dataset = "cfs", mode = "val", cv = cv, channels = channels, max_length = max_length))
         weight_list.append(weights["cfs"])
     if weights["bwh"] > 0:
-        train_datasets.append(BwhDataset(dataset = "bwh_new", mode = "train", cv = cv, channels = channels, max_length = max_length))
+        train_datasets.append(BwhDataset(dataset = "bwh_new", mode = "train", cv = cv, channels = {"thorax": 1.}, max_length = max_length))
+        val_datasets.append(BwhDataset(dataset = "bwh_new", mode = "val", cv = cv, channels = {"thorax": 1.}, max_length = max_length))
         weight_list.append(weights["bwh"])
 
     print("Number of training datasets: ", len(train_datasets))
     # merge the datasets
     train_dataset = MergedDataset(train_datasets, weight_list, 1, debug = config.dataset.debug)
+    val_dataset = MergedDataset(val_datasets, weight_list, 0.2, config.dataset.debug)
     train_loader = DataLoader(train_dataset, batch_size=config.dataset.batch_size, shuffle=True, num_workers=config.dataset.num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=config.dataset.batch_size, shuffle=False, num_workers=config.dataset.num_workers)
     print(f'Merged dataset size: {len(train_dataset)}')
     # ds_ids = {ds_name : 0 for ds_name in train_dataset.mapping.values()}
     # for _, ds_id in train_loader:
     #     for d_id in ds_id:
     #         ds_ids[train_dataset.mapping[d_id.item()]] += 1
     # print(f'Distribution: {ds_ids}')
-    return train_loader, train_dataset.mapping
-    # val_dataset = MergedDataset(val_datasets, weight_list, 0.2, debug = True)
+    return train_loader, train_dataset.mapping, val_loader
 
 def init_model(config):
     model = EncodecModel._get_model(
@@ -486,38 +497,92 @@ def init_model(config):
     print(f"Model Total number of parameters: {total_params}")
     total_params = sum(p.numel() for p in disc_model.parameters())
     print(f"Discriminator Total number of parameters: {total_params}")
+    # print(f"model {model}")
+    # breakpoint()
     return model, disc_model
+
+def save_checkpoint(model, optimizer, scheduler, epoch, path):
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.module.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'scheduler_state_dict': scheduler.state_dict(),
+    }
+    torch.save(checkpoint, path)
+    print(f"Model saved at epoch {epoch}") 
+
+def save_disc(disc, disc_optimizer, disc_scheduler, epoch, path):
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': disc.module.state_dict(),
+        'optimizer_state_dict': disc_optimizer.state_dict(),
+        'scheduler_state_dict': disc_scheduler.state_dict(),
+    }
+    torch.save(checkpoint, path)
+    print(f"Disc saved at epoch {epoch}")
+
+def load_checkpoint(model, optimizer, scheduler, path, device):
+    checkpoint = torch.load(path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    epoch = checkpoint['epoch'] + 1  # Resume from next epoch
+    print(f"Model loaded: Resuming from epoch {epoch}")
+    return epoch 
+
+def load_disc(disc, disc_optimizer, disc_scheduler, path, device):
+    checkpoint = torch.load(path, map_location=device)
+    disc.load_state_dict(checkpoint['model_state_dict'])
+    disc_optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    disc_scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    epoch = checkpoint['epoch'] + 1  # Resume from next epoch
+    print(f"Discriminator loaded: Resuming from epoch {epoch}")
+    return epoch
 
 def set_args():
     parser = argparse.ArgumentParser()
     
     # parser.add_argument("--exp_name", type=str, default="config")
     parser.add_argument("--exp_name", type=str, default="091224_l1")
-    
+    parser.add_argument("--resume_from", type=str, default=f"/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250304/134009/no")
+
     return parser.parse_args()
 
 if __name__ == "__main__":
 
-    # BwhDataset(dataset = "bwh_new", mode = "train", cv = 0)
-    # breakpoint()
-
     args = set_args()
     user_name = os.getlogin()
 
-    if user_name == 'ellen660':
-        curr_time = datetime.now().strftime("%Y%m%d")
-        curr_min = datetime.now().strftime("%H%M%S")
-        log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
-    elif user_name == 'chaoli':
-        log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
+    # if user_name == 'ellen660':
+    #     curr_time = datetime.now().strftime("%Y%m%d")
+    #     curr_min = datetime.now().strftime("%H%M%S")
+    #     log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
+    # elif user_name == 'chaoli':
+    #     log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
+    # else:
+    #     raise Exception("User not recognized")
+    # if not os.path.exists(log_dir):
+    #     os.makedirs(log_dir)
+
+    checkpoint_path = args.resume_from
+    # Load the YAML file
+    if os.path.exists(checkpoint_path):
+        log_dir = checkpoint_path
+        resume=True
+        config = load_config(f"{checkpoint_path}/config.yaml")
     else:
-        raise Exception("User not recognized")
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+        resume=False  
+        config = load_config("encodec/params/%s.yaml" % args.exp_name)
+        curr_time = datetime.now().strftime("%Y%m%d")
+        curr_minute = datetime.now().strftime("%H%M%S")
+        log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_minute}'
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        # Load the YAML file
+        config = load_config("encodec/params/%s.yaml" % args.exp_name, log_dir)
 
     # Load the YAML file
-    config = load_config("encodec/params/%s.yaml" % args.exp_name, log_dir)
-    writer = init_logger(log_dir)
+    writer = init_logger(log_dir, resume)
 
     torch.manual_seed(config.common.seed)
     random.seed(config.common.seed)
@@ -529,21 +594,19 @@ if __name__ == "__main__":
     metrics = Metrics(metrics_args)
 
     # train_loader, val_loader = init_dataset(config)
-    train_loader, label_mapping = init_dataset(config)
+    train_loader, label_mapping, val_loader = init_dataset(config)
     model, disc = init_model(config)
     model = model.to(device)
     if config.model.train_discriminator:
         disc = disc.to(device)
     else:
         disc = None
-
-    if data_parallel:
-        model = nn.DataParallel(model)
-        disc = nn.DataParallel(disc)
     
-    optimizer = optim.AdamW(model.parameters(), lr=float(config.optimization.lr), betas=(0.8, 0.9))
+    # optimizer = optim.AdamW(model.parameters(), lr=float(config.optimization.lr), betas=(0.8, 0.9))
+    optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), betas=(0.8, 0.9))
     if config.model.train_discriminator:
-        optimizer_disc = optim.AdamW(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(0.8, 0.9))
+        # optimizer_disc = optim.AdamW(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(0.8, 0.9))
+        optimizer_disc = optim.Adam(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(0.8, 0.9))
     else:
         optimizer_disc = None
 
@@ -559,18 +622,32 @@ if __name__ == "__main__":
     freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
     # freq_loss = ReconstructionLosses(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, hop_length=config.loss.hop_length, win_length=config.loss.win_length, device=device)
 
-    test(metrics, 0, model, disc, train_loader, config, writer, freq_loss=freq_loss, label_mapping=label_mapping)
-    for epoch in tqdm(range(1, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
+    if os.path.exists(checkpoint_path):
+        start_epoch = load_checkpoint(model, optimizer, scheduler, f"{checkpoint_path}/model.pth", device)
+    else:
+        start_epoch = 1
+    
+    if data_parallel:
+        model = nn.DataParallel(model)
+        disc = nn.DataParallel(disc)
+
+    # test(metrics, 0, model, disc, val_loader, config, writer, freq_loss=freq_loss, label_mapping=label_mapping)
+    for epoch in tqdm(range(start_epoch, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config=config, writer=writer, freq_loss=freq_loss, label_mapping=label_mapping)
         # if epoch % config.common.test_interval == 0:
         # save checkpoint and epoch
-        if epoch % config.checkpoint.save_every == 0:
-            test(metrics, epoch,model,disc, train_loader,config,writer, freq_loss=freq_loss, label_mapping=label_mapping)
-            if config.distributed.data_parallel:
-                torch.save(model.module.state_dict(), f"{log_dir}/model.pth")
-                if config.model.train_discriminator:
-                    torch.save(disc.module.state_dict(), f"{log_dir}/disc.pth")
-            else:
-                torch.save(model.state_dict(), f"{log_dir}/model.pth")
-                if config.model.train_discriminator:
-                    torch.save(disc.state_dict(), f"{log_dir}/disc.pth")
+        if epoch % config.checkpoint.save_every == 1:
+            test(metrics, epoch,model,disc, val_loader,config,writer, freq_loss=freq_loss, label_mapping=label_mapping)
+            save_checkpoint(model, optimizer, scheduler, epoch, f"{log_dir}/model.pth")
+            if config.model.train_discriminator:
+                save_disc(disc, optimizer_disc, disc_scheduler, epoch, f"{log_dir}/disc.pth")
+
+            # if config.distributed.data_parallel:
+            #     torch.save(model.module.state_dict(), f"{log_dir}/model.pth")
+            #     if config.model.train_discriminator:
+            #         torch.save(disc.module.state_dict(), f"{log_dir}/disc.pth")
+            # else:
+            #     torch.save(model.state_dict(), f"{log_dir}/model.pth")
+            #     if config.model.train_discriminator:
+            #         torch.save(disc.state_dict(), f"{log_dir}/disc.pth")
+

@@ -14,7 +14,7 @@ class MergedDataset(Dataset):
         if debug:
             size = 512
         else:
-            size = 2048
+            size = 4096
         self.size = round(size * sfreq)
         self.mapping = {i: ds.dataset for i, ds in enumerate(ds_list)}
     

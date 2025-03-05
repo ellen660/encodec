@@ -24,6 +24,8 @@ dataset:
   mros2: 0.
   wsc: 1.
   cfs: 1.
+  thorax: 1.
+  abdominal: 0.
 
 checkpoint:
   save: False

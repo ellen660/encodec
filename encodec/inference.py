@@ -19,6 +19,7 @@ import numpy as np
 
 from my_code.spectrogram_loss import BreathingSpectrogram, ReconstructionLoss, ReconstructionLosses
 import torch.multiprocessing as mp
+import time
 
 class ConfigNamespace:
     """Converts a dictionary into an object-like namespace for easy attribute access."""
@@ -73,41 +74,73 @@ def init_dataset(config, mode="test"):
 
     datasets = {}
     # selected channels
-    channels = dict()
-    # if config.dataset.thorax > 0:
-    #     channels['thorax'] = config.dataset.thorax
-    # if config.dataset.abdominal > 0:
-    #     channels['abdominal'] = config.dataset.abdominal
-    channels = {"thorax": 1} #Hard code for now
-    mgh_channels = {"thorax": 1}
+    thorax_channels = {"thorax": 1.} #Hard code for now
+    abdominal_channels = {"abdominal": 1.}
+    rf_channels = {"rf": 1.}
     
-    if mode == "test":
-        mgh_dataset = "mgh_new"
-    else:
-        mgh_dataset = "mgh_train_encodec"
+    # if mode == "test":
+    #     mgh_dataset = "mgh_new"
+    # else:
+    #     mgh_dataset = "mgh_train_encodec"
 
-    datasets["mgh"]=(BreathingDataset(dataset = mgh_dataset, mode = mode, cv = cv, channels = mgh_channels, max_length = max_length))
-    datasets["shhs2"]=(BreathingDataset(dataset = "shhs2_new", mode = mode, cv = cv, channels = channels, max_length = max_length))
-    datasets["shhs1"]=(BreathingDataset(dataset = "shhs1_new", mode = mode, cv = cv, channels = channels, max_length = max_length))
-    datasets["mros1"]=(BreathingDataset(dataset = "mros1_new", mode = mode, cv = cv, channels = channels, max_length = max_length))
-    datasets["mros2"]=(BreathingDataset(dataset = "mros2_new", mode = mode, cv = cv, channels = channels, max_length = max_length))
-    datasets["wsc"]=(BreathingDataset(dataset = "wsc_new", mode = mode, cv = cv, channels = channels, max_length = max_length))
-    datasets["cfs"]=(BreathingDataset(dataset = "cfs", mode = mode, cv = cv, channels = channels, max_length = max_length))
-    datasets["bwh"]=(BwhDataset(dataset = "bwh_new", mode = mode, cv = cv, channels = channels, max_length = max_length))
-    datasets["mesa"]=(BreathingDataset(dataset = "mesa_new", mode = mode, cv = cv, channels = channels, max_length = max_length))
+    datasets["mgh"]={"thorax":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                     "abdominal":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length)),
+                     "rf":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = rf_channels, max_length = max_length))
+                    }
+    datasets["shhs2"] = {
+                    "thorax":(BreathingDataset(dataset = "shhs2_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "shhs2_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }
+    datasets["shhs1"]={
+                    "thorax":(BreathingDataset(dataset = "shhs1_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "shhs1_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }
+    datasets["mros1"]={
+                    "thorax":(BreathingDataset(dataset = "mros1_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "mros1_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }
+    datasets["mros2"]={
+                    "thorax":(BreathingDataset(dataset = "mros2_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "mros2_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }
+    datasets["wsc"]={
+                    "thorax":(BreathingDataset(dataset = "wsc_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "wsc_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }
+    datasets["cfs"]={
+                    "thorax":(BreathingDataset(dataset = "cfs", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "cfs", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }
+    datasets["bwh"]={
+                    "thorax":(BwhDataset(dataset = "bwh_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    }
+    datasets["mesa"]={
+                    "thorax":(BreathingDataset(dataset = "mesa_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "mesa_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }
+    datasets["chat1"]={
+                    "thorax":(BreathingDataset(dataset = "chat1", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "chat1", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }
+    datasets["nchsdb"]={
+                    "thorax":(BreathingDataset(dataset = "nchsdb", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    "abdominal":(BreathingDataset(dataset = "nchsdb", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
+                    }    
     return datasets
 
-def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done):
+def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done, channel):
     """
     Process a single dataset on the specified GPU.
     """
+    os.makedirs(os.path.join(save_dir, ds_name, channel), exist_ok=True)
     test_ds.file_list = [f for f in test_ds.file_list if f not in done]
     test_loader = DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=4)
     l1, count = 0, 0
     for item in tqdm(test_loader, desc=f"Processing {ds_name}"):
         x = item["x"].to(device)
         filename = item["filename"]
-        x_hat, codes, _, _ = model(x)
+        x_hat, codes, _, _, = model(x)
+        # breakpoint()
         # x_hat = x_hat.squeeze().cpu().detach().numpy()
         l1 += torch.nn.L1Loss(reduction='mean')(x, x_hat).item()
         count += 1
@@ -116,17 +149,17 @@ def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done):
         # np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename[0]), data=x_hat, fs=10)
 
         # Save the codes
-        save_path = os.path.join(save_dir, ds_name, "codes", filename[0])
+        save_path = os.path.join(save_dir, ds_name, channel, filename[0])
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         np.savez(save_path, data=codes.squeeze().cpu().detach().numpy(), fs=10/compression_ratio)
-    
-    print(f"Finished processing {ds_name}")
-    return l1 / count
+        # time.sleep(1)
+    print(f"Finished processing {ds_name} for channel {channel}")
+    return l1 / count if count != 0 else None
 
-def get_code_distribution(ds_name, test_ds, save_dir, bins, pivot=None):
+def get_code_distribution(channel, ds_name, test_ds, save_dir, bins, pivot=None):
     all_codes = []
     for filename in tqdm(test_ds.file_list):
-        codes = np.load(os.path.join(save_dir, ds_name, "codes", filename))['data'] #32 by ?
+        codes = np.load(os.path.join(save_dir, ds_name, channel, filename))['data'] #32 by ?
         all_codes.append(codes)
     num_codebooks = all_codes[0].shape[0]
     histogram_bins = bins
@@ -201,8 +234,12 @@ def plot_most_frequent_signals(ds_name, pivot, model, save_dir, config, device):
 
     prev = None
     for n_q in range(1,num_codebooks+1):
+        print(f'codes shape {codes.shape}')
         quantized = model.quantizer.decode(codes, n_q=n_q)
+        print(f'quantized shape {quantized.shape}')
         output = model.decoder(quantized).detach().cpu().numpy().squeeze()
+        print(f'model shape {model.shape}')
+        sys.exit()
         if prev is not None:
             diff = output - prev 
         else:
@@ -254,11 +291,28 @@ if __name__ == "__main__":
     # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250114/175306"
     # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/175306"
 
-    log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250115/140935"
-    save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/140935"
-    datasets = ["mgh", "shhs2", "shhs1", "mros1", "mros2", "wsc", "cfs", "bwh"]
-    # datasets = ["bwh"]
+    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250115/140935"
+    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/140935"
+
+    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250118/135321"
+    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/135321"
+
+    log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250209/142145"
+    save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/142145"
+    # encodec\tensorboard\091224_l1\20250209\142145
+
+    datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
+    # datasets = ["mgh", "shhs2", "shhs1", "mros1", "mros2", "wsc", "cfs"]
+    # datasets = ["mgh", "shhs2", "wsc", "chat1", "cfs", "nchsdb"] #thorax 
+    # datasets = ["mgh_abdominal"]
+    # datasets = ["shhs2_abdominal"]
+    # datasets = ["wsc_abdominal"]
+    # datasets = ["chat1_abdominal"]
+    # datasets = ["cfs_abdominal"]
+    # datasets = ["shhs2"] #abdominal
+    # datasets = ["mgh_rf"] #rf
     resume = False
+    do_channel = ["thorax"]
 
     # Load the YAML file
     config = load_config(f'{log_dir}/config.yaml', log_dir)
@@ -270,8 +324,8 @@ if __name__ == "__main__":
     test_datasets = init_dataset(config, mode="test")
     os.makedirs(save_dir, exist_ok=True)
     for ds_name in test_datasets.keys():
-        os.makedirs(os.path.join(save_dir, ds_name), exist_ok=True)
-        os.makedirs(os.path.join(save_dir, ds_name, "codes"), exist_ok=True)
+        for channel in do_channel:
+            os.makedirs(os.path.join(save_dir, ds_name, channel), exist_ok=True)
 
     model = init_model(config)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -320,59 +374,99 @@ if __name__ == "__main__":
 
     print(f'log_dir {log_dir}')
     print(f'datasets {datasets}')
+    print(f'channel {do_channel}')
 
     #Code Generation
-    # test_datasets = init_dataset(config, mode="test")
-    # for ds_name in datasets:
-    #     test_ds = test_datasets[ds_name]
-    #     done = set()
-    #     if resume:
-    #         done = set([f for f in os.listdir(os.path.join(save_dir, ds_name, "codes")) if f.endswith('.npz')])
-    #     l1 = process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done=done)
-    #     print(f'l1 for {ds_name}: {l1}')
+    test_datasets = init_dataset(config, mode="test")
+    for channel in do_channel:
+        for ds_name in datasets:
+            try:
+                test_ds = test_datasets[ds_name][channel]
+            except:
+                print(f'channel {channel} not ofund in dataset {ds_name}')
+                break
+            done = set()
+            if resume:
+                done = set([f for f in os.listdir(os.path.join(save_dir, ds_name, channel)) if f.endswith('.npz')])
+            l1 = process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done=done, channel=channel)
+            print(f'l1 for {ds_name} channel {channel}: {l1}')
 
     # #Token Distribution
     # test_datasets = init_dataset(config, mode="test")
-    # pivot = get_code_distribution("shhs1", test_datasets["shhs1"], save_dir, config.model.bins)
+    # num_codebooks = 32
+    # histogram_bins = 512
+    # # Prepare to aggregate data for each feature
+    # feature_counts = np.zeros((num_codebooks, histogram_bins), dtype=int)
+
+    # for ds_name in datasets: #on internal datasets only
+    #     test_ds = test_datasets[ds_name]
+    #     all_codes = []
+    #     for filename in tqdm(test_ds.file_list):
+    #         codes = np.load(os.path.join(save_dir, ds_name, "codes", filename))['data'] #32 by ?
+    #         all_codes.append(codes)
+
+    #     # Aggregate counts for each feature
+    #     for sample in all_codes:
+    #         for codebook_idx in range(num_codebooks):
+    #             feature_data = sample[codebook_idx] #T
+    #             assert sample[codebook_idx].min() >= 0, "min 0"
+    #             assert sample[codebook_idx].max() < 512, f"max {sample[codebook_idx].max()}"
+    #             counts, _ = np.histogram(feature_data, bins=histogram_bins, range=(0, histogram_bins - 1))
+    #             feature_counts[codebook_idx] += counts
+    # general_pivot = {}
+    # for codebook_idx in range(num_codebooks):
+    #     sorted_indices_desc = np.argsort(feature_counts[codebook_idx])[::-1] #highest to lowest
+    #     general_pivot[codebook_idx] = sorted_indices_desc
+    
+    # # pivot, _ = get_code_distribution("shhs1", test_datasets["shhs1"], save_dir, config.model.bins)
     # for i, (ds_name, test_ds) in enumerate(test_datasets.items()):
-    #     get_code_distribution(ds_name, test_ds, save_dir, config.model.bins, pivot=pivot)
+    #     try:
+    #         get_code_distribution(ds_name, test_ds, save_dir, config.model.bins, pivot=general_pivot)
+    #     except: 
+    #         print(f'failed for {ds_name}')
 
     #Plot most frequent bwh signals (augment of the dataset?)
-    test_datasets = init_dataset(config, mode="test")
-    dataframe = {}
-    for ds_name in datasets:
-        pivot, most_common = get_code_distribution(ds_name, test_datasets[ds_name], save_dir, config.model.bins)
-        dataframe[ds_name] = most_common
-        # plot_most_frequent_signals(ds_name, pivot, model, save_dir, config, device)
+    # test_datasets = init_dataset(config, mode="test")
+    # dataframe = {}
+    # for channel in do_channel:
+    #     for ds_name in datasets:
+    #         try:
+    #             test_ds = test_datasets[ds_name][channel]
+    #         except:
+    #             print(f'channel {channel} not ofund in dataset {ds_name}')
+    #             break
+    #         pivot, most_common = get_code_distribution(channel, ds_name, test_ds, save_dir, config.model.bins)
+    #         dataframe[ds_name] = most_common
+    #         plot_most_frequent_signals(ds_name, pivot, model, save_dir, config, device)
 
-    import pandas as pd
+    # import pandas as pd
 
-    # Create a list to hold rows of data
-    rows = []
+    # # Create a list to hold rows of data
+    # rows = []
 
-    # Process each dataset
-    output_file = "datasets_summary_140935.xlsx"
-    with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
-        # Iterate through each codebook index to create a separate sheet
-        for codebook_idx in range(32):
-            rows = []
-            for ds_name, dataset in dataframe.items():
-                row = [ds_name]  # Start with the dataset name
-                for i in range(5):  # Iterate through the top 5 entries
-                    entry = dataset[codebook_idx][i]  # Get the details for the current codebook index
-                    row.extend([entry["idx"], entry["count"], entry["frequency"]])
-                rows.append(row)
+    # # Process each dataset
+    # output_file = "datasets_summary_140935.xlsx"
+    # with pd.ExcelWriter(output_file, engine="openpyxl") as writer:
+    #     # Iterate through each codebook index to create a separate sheet
+    #     for codebook_idx in range(32):
+    #         rows = []
+    #         for ds_name, dataset in dataframe.items():
+    #             row = [ds_name]  # Start with the dataset name
+    #             for i in range(5):  # Iterate through the top 5 entries
+    #                 entry = dataset[codebook_idx][i]  # Get the details for the current codebook index
+    #                 row.extend([entry["idx"], entry["count"], entry["frequency"]])
+    #             rows.append(row)
 
-            # Define columns for the DataFrame
-            columns = ["Dataset Name"]
-            for i in range(5):
-                columns.extend([f"i={i}_idx", f"i={i}_count", f"i={i}_frequency"])
+    #         # Define columns for the DataFrame
+    #         columns = ["Dataset Name"]
+    #         for i in range(5):
+    #             columns.extend([f"i={i}_idx", f"i={i}_count", f"i={i}_frequency"])
 
-            # Create a DataFrame for the current codebook index
-            df = pd.DataFrame(rows, columns=columns)
+    #         # Create a DataFrame for the current codebook index
+    #         df = pd.DataFrame(rows, columns=columns)
 
-            # Write this DataFrame to a new sheet in the Excel file
-            sheet_name = f"Codebook_{codebook_idx}"
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
+    #         # Write this DataFrame to a new sheet in the Excel file
+    #         sheet_name = f"Codebook_{codebook_idx}"
+    #         df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-    print(f"Excel file with 32 sheets saved as {output_file}")
+    # print(f"Excel file with 32 sheets saved as {output_file}")

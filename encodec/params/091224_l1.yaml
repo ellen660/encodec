@@ -6,27 +6,28 @@ exp_details:
   date: '2024-12-15'
 
 common:
-  log_interval: 5
-  max_epoch: 600
+  log_interval: 10
+  max_epoch: 2000
   seed: 42
   gradient_clipping: True
 
 dataset:
-  batch_size: 24 #for no discrim
+  batch_size: 32 #for no discrim
   #for gpu10, 88 - 24
   #for gpu07, 48 - 8
   max_length: 144000 # 4 hours at 10 hz
+  # max_length: 36000
   num_workers: 10
-  debug: True
+  debug: False
   cv: 0
-  mgh: 1.
+  mgh: 0.
   shhs1: 1.
   shhs2: 1.
   mros1: 1.
   mros2: 1.
   wsc: 1.
   cfs: 1.
-  bwh: 0.
+  bwh: 1.
   thorax: 0.5
   abdominal: 0.5
   rf: 0.
@@ -36,7 +37,7 @@ checkpoint:
   save_every: 50
 
 optimization:
-  lr: 1e-4 #base learning rate 1e-4
+  lr: 1e-3 #base learning rate 1e-4
   # weight_decay: 1e-6
   disc_lr: 3e-4 #base discriminator learning rate 3e-4
 
@@ -49,7 +50,7 @@ loss:
   weight_feat: 3.
   alpha: 0.01
   bandwidth: null
-  n_fft: 1024 # 300 then 512 then 1024
+  n_fft: 512 # 300 then 512 then 1024
   # hop_length: [20, 50, 256] #try smaller hop length?
   # win_length: [100, 300, 1024]
   #default was 1024, 300, 50 for 5 seconds
@@ -67,15 +68,18 @@ model:
   # ratios: [5,5,4,1] #100 downsampling 10 seconds
   # ratios: [6,5,5,1] # 150 downsampling 15 seconds
   # ratios: [10, 6, 5, 1]# 30 seconds
-  bins: 512
+  bins: 1024
   dimension: 256
-  target_bandwidths: [0.32] #0.1 is 10 codebooks, 0.2 is 20 codebooks
-  train_discriminator: True # you can set it to 2/3 and other number to train discriminator only
+  target_bandwidths: [0.08] #0.1 is 10 codebooks, 0.2 is 20 codebooks
+  train_discriminator: False # you can set it to 2/3 and other number to train discriminator only
   train_discriminator_start_epoch: 60
   train_discriminator_for: 0
-  train_discriminator_prob: 0.3
-  disc_hop_lengths: [128, 256]
-  disc_win_lengths: [512, 1024]
+  train_discriminator_prob: 0.5
+  # disc_hop_lengths: [20, 128, 256]
+  # disc_win_lengths: [100, 512, 1024]
+  # disc_n_ffts: [1024, 1024, 1024]
+  disc_hop_lengths: [20, 128]
+  disc_win_lengths: [100, 512]
   disc_n_ffts: [1024, 1024]
   filters: 32
   audio_normalize: False
@@ -97,8 +101,3 @@ distributed:
 #     l_f: 1
 #     # l_g: 3
 #     # l_feat: 3
-
-#i feel like logically,
-#if downsamplig larger
-#decrease bins
-#but increase feature size

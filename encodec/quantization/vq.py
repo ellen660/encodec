@@ -23,6 +23,7 @@ class QuantizedResult:
     quantized: torch.Tensor
     codes: torch.Tensor
     bandwidth: torch.Tensor  # bandwidth in kb/s used, per batch item.
+    soft_targets: tp.Optional[torch.Tensor] = None
     commit_loss: tp.Optional[torch.Tensor] = None
     codebook_loss: tp.Optional[torch.Tensor] = None
     latents: tp.Optional[torch.Tensor] = None
@@ -78,10 +79,13 @@ class ResidualVectorQuantizer(nn.Module):
     
     def intermediate_results(self, x, n_q):
         outputs = {}
-        quantized, codes, commit_loss = self.vq(x, n_q=n_q)
+        # quantized, codes, commit_loss, quantized_stack, soft_targets = self.vq(x, n_q=n_q, return_quantized=True)
+        quantized, codes, commit_loss, quantized_stack = self.vq(x, n_q=n_q, return_quantized=True)
         outputs['quantized'] = quantized
         outputs['codes'] = codes
         outputs['commit_loss'] = commit_loss
+        outputs['quantized_stack'] = quantized_stack
+        # outputs['soft_targets'] = soft_targets
         return outputs
 
     def forward(self, x: torch.Tensor, frame_rate: int, bandwidth: tp.Optional[float] = None) -> QuantizedResult:
@@ -98,6 +102,7 @@ class ResidualVectorQuantizer(nn.Module):
         bw_per_q = self.get_bandwidth_per_quantizer(frame_rate)
         n_q = self.get_num_quantizers_for_bandwidth(frame_rate, bandwidth)
         quantized, codes, commit_loss = self.vq(x, n_q=n_q)
+        # quantized, codes, commit_loss, soft_targets = self.vq(x, n_q=n_q)
         bw = torch.tensor(n_q * bw_per_q).to(x)
         # print(f'bw: {bw}')
         # print(f'quantized: {quantized.shape}')
@@ -106,7 +111,7 @@ class ResidualVectorQuantizer(nn.Module):
         # print(f'penalty: {torch.mean(commit_loss)}')
         # print(f'commit_loss: {commit_loss.device}')
         # sys.exit()
-        return QuantizedResult(quantized, codes, bw, commit_loss, commit_loss)
+        return QuantizedResult(quantized, codes, bw, None, commit_loss, commit_loss)
 
     def get_num_quantizers_for_bandwidth(self, frame_rate: int, bandwidth: tp.Optional[float] = None) -> int:
         """Return n_q based on specified target bandwidth.
@@ -137,5 +142,6 @@ class ResidualVectorQuantizer(nn.Module):
     def decode(self, codes: torch.Tensor, n_q=None) -> torch.Tensor:
         """Decode the given codes to the quantized representation.
         """
+        #what shapee
         quantized = self.vq.decode(codes, n_q=n_q)
         return quantized

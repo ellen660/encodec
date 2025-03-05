@@ -13,6 +13,11 @@ class BreathingSpectrogram(nn.Module):
         win_length=None,
         device='cuda'
     ):
+        """
+        Does NOT preserve phase
+            can arrange into time/frequency visual
+            Not sure if the log scaling is necessary because we are not dealing with perceptual hearing
+        """
         super().__init__()
         ##############################################
         # FFT Parameters                              #
@@ -63,10 +68,12 @@ class BreathingSpectrogram(nn.Module):
         power_spectrogram = torch.abs(fft) ** 2
 
         # Convert to log scale (log10) to mimic perceptual scaling
+        #TODO is this needed?
         log_spectrogram = torch.log10(torch.clamp(power_spectrogram, min=1e-5))
 
         # Restore original shape [B, H, T]
         return log_spectrogram
+        # return power_spectrogram
 
 # def create_breathing_frequency_weight(frequency_bins, breathing_frequency, bandwidth=1.0, device='cpu'):
 def create_breathing_frequency_weight(S_x, Sx_breathing_rate, bandwidth=1.0, device='cpu'):

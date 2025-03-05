@@ -7,9 +7,16 @@
 """EnCodec model implementation."""
 
 import sys
+import os
 import math
 from pathlib import Path
 import typing as tp
+
+# Get the directory of the current script (encodec_model.py)
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+# Add 'encodec' to sys.path
+sys.path.append(current_dir)
 
 import numpy as np
 import torch
@@ -29,6 +36,7 @@ class QuantizedResult:
     quantized: torch.Tensor
     codes: torch.Tensor
     bandwidth: torch.Tensor  # bandwidth in kb/s used, per batch item.
+    soft_targets: tp.Optional[torch.Tensor] = None
     commit_loss: tp.Optional[torch.Tensor] = None
     codebook_loss: tp.Optional[torch.Tensor] = None
     latents: tp.Optional[torch.Tensor] = None
@@ -189,6 +197,7 @@ class EncodecModel(nn.Module):
         encoded_frame = {
             'quantized': quantized_result.quantized,
             'codes': codes,
+            'soft_targets': None,
             'commit_loss': quantized_result.commit_loss,
             'codebook_loss': quantized_result.codebook_loss,
             'scale': scale,
@@ -243,8 +252,9 @@ class EncodecModel(nn.Module):
         codes = torch.cat([frame['codes'] for frame in frames], dim=-1)
         commit_loss = torch.cat([frame['commit_loss'] for frame in frames], dim=-1)
         codebook_loss = torch.cat([frame['codebook_loss'] for frame in frames], dim=-1)
+        # soft_targets = torch.cat([frame['soft_targets'] for frame in frames], dim=-1)
 
-        return self.decode(frames)[:, :, :x.shape[-1]], codes, commit_loss, codebook_loss
+        return self.decode(frames)[:, :, :x.shape[-1]], codes, commit_loss, codebook_loss, #soft_targets
 
     def set_target_bandwidth(self, bandwidth: float):
         if bandwidth not in self.target_bandwidths:
