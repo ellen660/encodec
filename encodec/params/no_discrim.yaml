@@ -1,9 +1,6 @@
-#batch size, debug, weights, train_discriminator, discriminator start epoch, learning rate
-
 exp_details:
-  name: '091224_l1'
+  name: 'no_discrim'
   description: '4 hours at 10 hz'
-  date: '2024-12-15'
 
 common:
   log_every: 10
@@ -83,10 +80,3 @@ discrim:
 distributed:
   data_parallel: True
   world_size: 8 
-
-# balancer:
-#   weights:
-#     l_t: 1
-#     l_f: 1
-#     # l_g: 3
-#     # l_feat: 3

@@ -1,0 +1,96 @@
+import pickle
+from typing import cast
+import numpy as np
+
+class DeepSNRPredictor:
+    BATCH_SIZE = 256
+    SPEC_WIDTH = 80
+    SPEC_HEIGHT = 80
+
+    SPEC_STEP_SEC = 5
+    SPEC_WIN_SEC = 60
+    SPEC_NPAD = 2
+    SPEC_CUTOFF_BPM = 40
+
+    def __init__(self, device="cpu"):
+        from sklearn.calibration import CalibratedClassifierCV
+
+        from noise_model import NoiseDetectionModel, NoiseDetectionModelWithSpec
+
+        self.device = device
+
+        self.model_file_path = f"/data/scratch/ellen660/encodec/encodec/data/model_snr/deepsnr_model.pkl"
+        self.model_dict = pickle.load(open(self.model_file_path, "rb"))
+
+        self.model = NoiseDetectionModel().to(device)
+        self.model.load_state_dict(self.model_dict["model"])
+        self.svm_model = cast(CalibratedClassifierCV, self.model_dict["svm_model"])
+
+        self.model_with_spec = NoiseDetectionModelWithSpec().to(device)
+        self.model_with_spec.load_state_dict(self.model_dict["model_with_spec"])
+        self.svm_model_with_spec = cast(CalibratedClassifierCV, self.model_dict["svm_model_with_spec"])
+
+        self.model.eval()
+        self.model_with_spec.eval()
+
+    def predict_batch(self, signals, specs=None, get_feature=False):
+        import torch
+
+        signals = torch.tensor(np.array(signals, dtype=np.float32)[:, None], device=self.device)
+
+        if specs is not None:
+            specs = torch.tensor(np.array(specs, dtype=np.float32)[:, None], device=self.device)
+            features = []
+            for i in range(len(signals) // self.BATCH_SIZE + 1):
+                batch = signals[i * self.BATCH_SIZE : (i + 1) * self.BATCH_SIZE]
+                spec = specs[i * self.BATCH_SIZE : (i + 1) * self.BATCH_SIZE]
+                if len(batch) > 0:
+                    _, x = self.model_with_spec.forward(batch, spec)
+                    features.append(x.squeeze().data.cpu().numpy())
+            features = np.vstack(features)
+            if get_feature:
+                return features
+            prediction = self.svm_model_with_spec.predict_proba(features)
+        else:
+            features = []
+            for i in range(len(signals) // self.BATCH_SIZE + 1):
+                batch = signals[i * self.BATCH_SIZE : (i + 1) * self.BATCH_SIZE]
+                if len(batch) > 0:
+                    _, x = self.model.forward(batch)
+                    features.append(x.squeeze().data.cpu().numpy())
+            features = np.vstack(features)
+            if get_feature:
+                return features
+            prediction = self.svm_model.predict_proba(features)
+
+        return prediction[:, 1]
+
+    def predict(self, signals, specs=None, get_feature=False):
+        #signal shape: (n, t)
+        if signals.shape[1] >= self.model.SignalDuration:
+            mid = signals.shape[1] // 2
+            half = self.model.SignalDuration // 2
+            signals = signals[..., mid - half : mid + half]
+        else:
+            pad = self.model.SignalDuration - signals.shape[1]
+            signals = np.pad(signals, [[0, 0], [pad // 2, pad - pad // 2]], "reflect")
+        signals = signals - np.mean(signals, axis=1, keepdims=True)
+        signals = signals / np.std(signals, axis=1, keepdims=True)
+        signals = np.clip(signals, -self.model.SignalClipLimit, self.model.SignalClipLimit)
+        return self.predict_batch(signals, specs, get_feature)
+
+def as_sliding_window(array, window_size, stride):
+    shape = (array.shape[0] - window_size + 1, window_size)
+    strides = (array.strides[0],) + array.strides
+    rolled = np.lib.stride_tricks.as_strided(array, shape=shape, strides=strides)
+    return rolled[np.arange(0, shape[0], stride)]
+
+if __name__ == '__main__':
+    data = np.random.rand(10*60*60*4)
+    STEP_SIZE = 8
+
+    deepsnr_predictor = DeepSNRPredictor() 
+    seg_len = deepsnr_predictor.model.SignalDuration
+    signal_pad = np.pad(data, [[seg_len // 2, seg_len // 2 - 1]], mode="reflect")
+    signal_reshaped = as_sliding_window(signal_pad, seg_len, STEP_SIZE)
+    deepsnr = deepsnr_predictor.predict_batch(signal_reshaped)

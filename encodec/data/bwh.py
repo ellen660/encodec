@@ -14,23 +14,23 @@ from tqdm import tqdm
 import ast
 
 """
-N = 2067?
+N = 2067
 """
 class BwhDataset(Dataset):
     root = "/data/netmit/sleep_lab/ali_2"
     processed_signal = f'{root}/bwh_encodec'
-    if not os.path.exists(processed_signal):
-        os.makedirs(processed_signal)
     NumCv = 4
+    modes = ['train', 'val', 'test']
         
     def __init__(self, dataset="bwh_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length=10 * 60 * 60 * 4):
+        assert mode in ['train', 'val', 'test'], 'Only support train val or test mode'
         assert channels == {"thorax": 1.0}, "Only support thorax channel"
         channels = {"thorax_clipped": 1.0}
+
         self.dataset = dataset
         self.mode = mode
-        assert self.mode in ['train', 'test', 'val'], 'Only support train val or test mode'
         self.cv = cv
-        self.channels = channels # dictionary of channel names and their weights
+        self.channels = channels 
         self.ds_dir = self.root
         self.max_length = max_length
         self.max_length_200 = max_length * 20
@@ -91,28 +91,28 @@ class BwhDataset(Dataset):
         else:
             raise ValueError(f"Invalid mode: {mode}")
     
-    def filter(self, file_list):
-        """
-        Filters out the weird files
-        """
-        filtered = []
-        print(f'initial length: {len(file_list)}')
-        for filename in file_list:
-            # print(f'filtering filename: {filename}')
-            try:
-                sleep_data = np.load("/data/netmit/sleep_lab/ali_2/stage_pred/" + filename)['data']
-                num_zeroes = np.sum(sleep_data == 0)
-                #how many hours 
-                if (len(sleep_data) - num_zeroes)/(2*60) > 4:
-                    filtered.append(filename)
-                else:
-                    # print(f'file {filename} has less than 4 hours of sleep')
-                    pass
-            except:
-                # print(f'error with {filename}')
-                pass
-        print(f'remaining {len(filtered)} files')
-        return filtered
+    # def filter(self, file_list):
+    #     """
+    #     Filters out the weird files
+    #     """
+    #     filtered = []
+    #     print(f'initial length: {len(file_list)}')
+    #     for filename in file_list:
+    #         # print(f'filtering filename: {filename}')
+    #         try:
+    #             sleep_data = np.load("/data/netmit/sleep_lab/ali_2/stage_pred/" + filename)['data']
+    #             num_zeroes = np.sum(sleep_data == 0)
+    #             #how many hours 
+    #             if (len(sleep_data) - num_zeroes)/(2*60) > 4:
+    #                 filtered.append(filename)
+    #             else:
+    #                 # print(f'file {filename} has less than 4 hours of sleep')
+    #                 pass
+    #         except:
+    #             # print(f'error with {filename}')
+    #             pass
+    #     print(f'remaining {len(filtered)} files')
+    #     return filtered
 
     def split_train_test(self, file_list):
         train_files = []

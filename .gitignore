@@ -50,3 +50,5 @@ ENV/
 /test_*.ecdc
 /test_*_decompressed.wav
 tensorboard
+visualizations
+predictions

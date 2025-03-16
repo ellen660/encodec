@@ -1,5 +1,5 @@
 from model import EncodecModel
-from data import init_dataset
+from data import MergedDataset, BreathingDataset, BwhDataset
 from losses import total_loss, disc_loss, Metrics, MetricsArgs, LinearWarmupCosineAnnealingLR, WarmupScheduler, ReconstructionLoss
 from msstftd import MultiScaleSTFTDiscriminator
 
@@ -23,6 +23,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import math
 import time
+import wandb
 
 def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config, writer, freq_loss, label_mapping):
     """train one step function
@@ -41,27 +42,25 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
         warmup_scheduler (_type_): warmup learning rate
     """
     model.train()
-    if config.discrim.train_discriminator and epoch >= config.discrim.train_discriminator_start_epoch:
+    if config.model.train_discriminator and epoch >= config.model.train_discriminator_start_epoch:
         disc.train()
     epoch_loss = 0
 
     for i, (item, ds_id) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
         x = item["x"]
-        if x is None:
-            continue
         x = x.to(device)
         x_hat, _, commit_loss, codebook_loss = model(x)
 
         train_generator = (
-            config.discrim.train_discriminator
-            and epoch >= config.discrim.train_discriminator_start_epoch
+            config.model.train_discriminator
+            and epoch >= config.model.train_discriminator_start_epoch
         )
 
         # offset_prob = 1. - float(config.model.train_discriminator_prob) if epoch - config.model.train_discriminator_start_epoch < config.model.train_discriminator_for else 0.0
         train_discriminator = (
-            config.discrim.train_discriminator
-            and epoch >= config.discrim.train_discriminator_start_epoch
-            and random.random() < float(config.discrim.train_discriminator_prob) #+ offset_prob
+            config.model.train_discriminator
+            and epoch >= config.model.train_discriminator_start_epoch
+            and random.random() < float(config.model.train_discriminator_prob) #+ offset_prob
         )
 
         if train_generator and not train_discriminator:
@@ -91,7 +90,7 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
         loss.backward()
         # gradient clipping. restrict the norm of the gradients to be less than 1
         if config.common.gradient_clipping:
-            nn.utils.clip_grad_norm_(model.parameters(), config.common.gradient_clipping_value)
+            nn.utils.clip_grad_norm_(model.parameters(), 0.1)
         optimizer.step()
 
         if train_discriminator:
@@ -102,11 +101,11 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             optimizer_disc.zero_grad()
             loss_disc.backward() 
             if config.common.gradient_clipping:
-                nn.utils.clip_grad_norm_(disc.parameters(), config.common.gradient_clipping_value)
+                nn.utils.clip_grad_norm_(disc.parameters(), 0.1)
             optimizer_disc.step()
 
             # breakpoint()
-            if epoch % config.common.log_every == 0:
+            if epoch % config.common.log_interval == 0:
                 metrics.fill_metrics({'Loss Discriminator': loss_disc.item()}, epoch*len(train_loader) + i)
                 metrics.fill_metrics({'Logits Real': (torch.mean(logits_real[0]).item() + torch.mean(logits_real[1]).item())/2}, epoch*len(train_loader) + i)
                 metrics.fill_metrics({'Logits Fake': (torch.mean(logits_fake[0]).item() + torch.mean(logits_fake[1]).item())/2}, epoch*len(train_loader) + i)
@@ -118,7 +117,7 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
                         max_disc_gradient = max(max_disc_gradient, param.grad.abs().max().item())
                 metrics.fill_metrics({'Max Discriminator Gradient': max_disc_gradient}, epoch*len(train_loader) + i)
 
-        if epoch % config.common.log_every == 0: # add the loss to the tensorboard
+        if epoch % config.common.log_interval == 0: # add the loss to the tensorboard
             epoch_loss += loss.item()
             metrics.fill_metrics({
                 'Loss L1': losses_g['l_1'].item(),
@@ -147,10 +146,10 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             }, epoch*len(train_loader) + i)
 
     scheduler.step()  
-    if config.discrim.train_discriminator and epoch >= config.discrim.train_discriminator_start_epoch:
+    if config.model.train_discriminator and epoch >= config.model.train_discriminator_start_epoch:
         disc_scheduler.step()
 
-    if epoch % config.common.log_every == 0:
+    if epoch % config.common.log_interval == 0:
         metrics_dict = metrics.compute_and_log_metrics()
         # log the learning rate
         metrics_dict['Learning Rate'] = optimizer.param_groups[0]['lr']
@@ -165,8 +164,8 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
 def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss, label_mapping):
     model.eval()
     train_discriminator = (
-        config.discrim.train_discriminator
-        and epoch >= config.discrim.train_discriminator_start_epoch
+        config.model.train_discriminator
+        and epoch >= config.model.train_discriminator_start_epoch
     )
     if train_discriminator:
         disc.eval()
@@ -310,16 +309,14 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss, lab
     logger(writer, metrics_dict, 'val', epoch)
     metrics.clear_metrics()
 
-#Logger for tensorboard
-def logger(writer, metrics, phase, epoch_index):
+def logger(metrics, phase, epoch_index):
+    log_dict = {}
     for key, value in metrics.items():
-        if type(value)!= float and len(value.shape) > 0 and value.shape[0] == 2:
-            value = value[1]
-        elif type(value)!= float and len(value.shape) > 0 and value.shape[0] > 2:
-            raise Exception("Need to handle multiclass")
-            # bp()
-        writer.add_scalar("%s/%s"%(phase, key), value, epoch_index)
-    writer.flush()
+        if isinstance(value, torch.Tensor) and value.ndim > 0 and value.shape[0] == 2:
+            value = value[1]  # Ensure correct shape before logging
+        log_dict[f"{phase}/{key}"] = value
+
+    wandb.log(log_dict, step=epoch_index)
 
 class ConfigNamespace:
     """Converts a dictionary into an object-like namespace for easy attribute access."""
@@ -340,54 +337,69 @@ def load_config(filepath, log_dir=None):
                 yaml.dump(config_dict, file)
     return ConfigNamespace(config_dict)
 
-def init_logger(log_dir, resume=False):
-    print(f'log_dir: {log_dir}')
-    if resume:
-        # Resume logging
-        writer = SummaryWriter(log_dir=log_dir, purge_step=None)  # Prevents overwriting
-    else:
-        writer = SummaryWriter(log_dir=log_dir)
-    return writer
+def init_logger(log_dir, config, resume=False):
+    """
+    Initializes Weights & Biases (W&B) logger.
 
-# def init_dataset(config):
-#     cv = config.dataset.cv
-#     max_length = config.dataset.max_length
-#     weights = {
-#         "mgh_train_encodec": config.dataset.mgh,
-#         "shhs2_new": config.dataset.shhs2,
-#         "shhs1_new": config.dataset.shhs1,
-#         "mros1_new": config.dataset.mros1,
-#         "mros2_new": config.dataset.mros2,
-#         "wsc_new": config.dataset.wsc,
-#         "cfs": config.dataset.cfs,
-#         "bwh_new": config.dataset.bwh
-#     }
+    Args:
+        log_dir (str): Directory where logs are stored.
+        config (dict): Dictionary of hyperparameters/configurations to log.
+        resume (bool): Whether to resume a previous run.
 
-#     train_datasets, val_datasets, train_weight, val_weight = [], [], [], []
-#     channels = {'thorax': config.dataset.thorax, 'abdominal': config.dataset.abdominal}
-#     for ds_name, weight in weights.items():
-#         if weight > 0:
-#             if ds_name == "bwh_new":
-#                 train_datasets.append(BwhDataset(dataset = ds_name, mode = "train", cv = cv, channels = {"thorax": 1.0}, max_length = max_length))
-#                 val_datasets.append(BwhDataset(dataset = ds_name, mode = "val", cv = cv, channels = {"thorax": 1.0}, max_length = max_length))
-#             else:
-#                 train_datasets.append(BreathingDataset(dataset = ds_name, mode = "train", cv = cv, channels = channels, max_length = max_length))
-#                 val_datasets.append(BreathingDataset(dataset = ds_name, mode = "val", cv = cv, channels = channels, max_length = max_length))
-#             train_weight.append(weight)
-#             val_weight.append(weight)
+    Returns:
+        wandb.run: The W&B run object.
+    """
+    print(f'Logging to W&B, log_dir: {log_dir}')
 
-#     #Holdout/external dataset
-#     val_datasets.append(BreathingDataset(dataset = "mesa_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
-#     val_weight.append(1.)
+    wandb.init(
+        project="ablation",
+        name=log_dir,  # Use log_dir as the run name
+        config=config,  # Log hyperparameters
+        resume="allow" if resume else None
+    )
 
-#     print("Number of training datasets: ", len(train_datasets))
-#     # merge the datasets
-#     train_dataset = MergedDataset(train_datasets, train_weight, 1, config.common.debug)
-#     val_dataset = MergedDataset(val_datasets, val_weight, 0.2, config.common.debug)
-#     train_loader = DataLoader(train_dataset, batch_size=config.optimization.batch_size, shuffle=True, num_workers=config.common.num_workers)
-#     val_loader = DataLoader(val_dataset, batch_size=config.optimization.batch_size, shuffle=False, num_workers=config.common.num_workers)
-#     print(f'Merged dataset size: {len(train_dataset)}')
-#     return train_loader, val_loader, train_dataset.mapping, val_dataset.mapping
+    return wandb.run  # Returns the active W&B run object
+
+def init_dataset(config):
+    cv = config.dataset.cv
+    max_length = config.dataset.max_length
+    weights = {
+        "mgh_train_encodec": config.dataset.mgh,
+        "shhs2_new": config.dataset.shhs2,
+        "shhs1_new": config.dataset.shhs1,
+        "mros1_new": config.dataset.mros1,
+        "mros2_new": config.dataset.mros2,
+        "wsc_new": config.dataset.wsc,
+        "cfs": config.dataset.cfs,
+        "bwh_new": config.dataset.bwh
+    }
+
+    train_datasets, val_datasets, train_weight, val_weight = [], [], [], []
+    channels = {'thorax': config.dataset.thorax, 'abdominal': config.dataset.abdominal}
+    for ds_name, weight in weights.items():
+        if weight > 0:
+            if ds_name == "bwh_new":
+                train_datasets.append(BwhDataset(dataset = ds_name, mode = "train", cv = cv, channels = channels, max_length = max_length))
+                val_datasets.append(BwhDataset(dataset = ds_name, mode = "val", cv = cv, channels = channels, max_length = max_length))
+            else:
+                train_datasets.append(BreathingDataset(dataset = ds_name, mode = "train", cv = cv, channels = channels, max_length = max_length))
+                val_datasets.append(BreathingDataset(dataset = ds_name, mode = "val", cv = cv, channels = channels, max_length = max_length))
+            train_weight.append(weight)
+            val_weight.append(weight)
+
+    #Holdout/external dataset
+    val_datasets.append(BreathingDataset(dataset = "mesa_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
+    val_weight.append(1.)
+
+    print("Number of training datasets: ", len(train_datasets))
+    # merge the datasets
+    train_dataset = MergedDataset(train_datasets, train_weight, 1, config.dataset.debug)
+    val_dataset = MergedDataset(val_datasets, val_weight, 0.2, config.dataset.debug)
+    train_loader = DataLoader(train_dataset, batch_size=config.dataset.batch_size, shuffle=True, num_workers=config.dataset.num_workers)
+    val_loader = DataLoader(val_dataset, batch_size=config.dataset.batch_size, shuffle=False, num_workers=config.dataset.num_workers)
+    print(f'Merged dataset size: {len(train_dataset)}')
+    breakpoint()
+    return train_loader, val_loader
 
 def init_model(config):
     model = EncodecModel._get_model(
@@ -404,10 +416,10 @@ def init_model(config):
     disc_model = MultiScaleSTFTDiscriminator(
         in_channels=config.model.channels,
         out_channels=config.model.channels,
-        filters=config.discrim.filters,
-        hop_lengths=config.discrim.disc_hop_lengths,
-        win_lengths=config.discrim.disc_win_lengths,
-        n_ffts=config.discrim.disc_n_ffts,
+        filters=config.model.filters,
+        hop_lengths=config.model.disc_hop_lengths,
+        win_lengths=config.model.disc_win_lengths,
+        n_ffts=config.model.disc_n_ffts,
     )
 
     # log model, disc model parameters and train mode
@@ -424,25 +436,27 @@ def init_model(config):
     # breakpoint()
     return model, disc_model
 
-def save_checkpoint(model, optimizer, scheduler, epoch, path):
+def save_model_wandb(model, optimizer, scheduler, epoch, path):
+    """Save model checkpoint and log it to Weights & Biases."""
     checkpoint = {
         'epoch': epoch,
-        'model_state_dict': model.module.state_dict(),
+        'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict(),
     }
-    torch.save(checkpoint, path)
-    print(f"Model saved at epoch {epoch}") 
+    torch.save(checkpoint, path)  # Save locally
+    wandb.save(path)  # Upload to W&B
 
-def save_disc(disc, disc_optimizer, disc_scheduler, epoch, path):
+def save_disc_wandb(disc, disc_optimizer, disc_scheduler, epoch, path):
+    """Save model checkpoint and log it to Weights & Biases."""
     checkpoint = {
         'epoch': epoch,
-        'model_state_dict': disc.module.state_dict(),
+        'model_state_dict': disc.state_dict(),
         'optimizer_state_dict': disc_optimizer.state_dict(),
         'scheduler_state_dict': disc_scheduler.state_dict(),
     }
-    torch.save(checkpoint, path)
-    print(f"Disc saved at epoch {epoch}")
+    torch.save(checkpoint, path)  # Save locally
+    wandb.save(path)  # Upload to W&B
 
 def load_checkpoint(model, optimizer, scheduler, path, device):
     checkpoint = torch.load(path, map_location=device)
@@ -469,84 +483,78 @@ def set_args():
     return parser.parse_args()
 
 if __name__ == "__main__":
-
     args = set_args()
     user_name = os.getlogin()
-
-    # if user_name == 'ellen660':
-    #     curr_time = datetime.now().strftime("%Y%m%d")
-    #     curr_min = datetime.now().strftime("%H%M%S")
-    #     log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_min}'
-    # elif user_name == 'chaoli':
-    #     log_dir = os.path.join(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard', args.exp_name)
-    # else:
-    #     raise Exception("User not recognized")
-    # if not os.path.exists(log_dir):
-    #     os.makedirs(log_dir)
-
     checkpoint_path = args.resume_from
+
     # Load the YAML file
     if os.path.exists(checkpoint_path):
         resume=True
         log_dir = checkpoint_path
         config = load_config(f"{checkpoint_path}/config.yaml")
-    else:
-        resume=False  
-        config = load_config("encodec/params/%s.yaml" % args.exp_name)
-        curr_time = datetime.now().strftime("%Y%m%d")
-        curr_minute = datetime.now().strftime("%H%M%S")
-        log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_minute}/{int(100*float(config.model.target_bandwidths[0]))}codebooks_{config.model.bins}bins_{np.prod(config.model.ratios)}downsample'
-        if not os.path.exists(log_dir):
-            os.makedirs(log_dir)
-        # Load the YAML file
-        config = load_config("encodec/params/%s.yaml" % args.exp_name, log_dir)
+    # else:
+    #     resume=False  
+    #     config = load_config("encodec/params/%s.yaml" % args.exp_name)
+    #     curr_time = datetime.now().strftime("%Y%m%d")
+    #     curr_minute = datetime.now().strftime("%H%M%S")
+    #     log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_minute}/{int(100*float(config.model.target_bandwidths[0]))}codebooks_{config.model.bins}bins_{np.prod(config.model.ratios)}downsample'
+    #     if not os.path.exists(log_dir):
+    #         os.makedirs(log_dir)
+    #     # Load the YAML file
+    #     config = load_config("encodec/params/%s.yaml" % args.exp_name, log_dir)
 
     # Load the YAML file
     writer = init_logger(log_dir, resume)
 
     torch.manual_seed(config.common.seed)
     random.seed(config.common.seed)
-    #TODO: numpy ranodm?
+    data_parallel = config.distributed.data_parallel
     device = torch.device("cuda")
+    # breakpoint()
 
     metrics_args = MetricsArgs(num_datasets=1, device=device)
     metrics = Metrics(metrics_args)
 
-    train_loader, val_loader, train_mapping, val_mapping = init_dataset(config)
-
+    train_loader, val_loader = init_dataset(config)
     model, disc = init_model(config)
     model = model.to(device)
-    optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), betas=(config.optimization.beta1, config.optimization.beta2))
-    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.optimization.warmup_epoch, max_epochs=config.common.max_epoch)
-    freq_loss = ReconstructionLoss(alpha=config.spectrogram_loss.alpha, bandwidth=config.spectrogram_loss.bandwidth, sampling_rate=10, n_fft=config.spectrogram_loss.n_fft, hop_length=config.spectrogram_loss.hop_length, win_length=config.spectrogram_loss.win_length, device=device)
-
-    if config.discrim.train_discriminator:
+    if config.model.train_discriminator:
         disc = disc.to(device)
-        optimizer_disc = optim.Adam(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(config.optimization.beta1, config.optimization.beta2))
-        disc_scheduler = LinearWarmupCosineAnnealingLR(optimizer_disc, warmup_epochs=config.optimization.warmup_epoch, max_epochs=config.common.max_epoch-config.discrim.train_discriminator_start_epoch)
     else:
         disc = None
+    
+    optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), betas=(0.8, 0.9))
+    if config.model.train_discriminator:
+        optimizer_disc = optim.Adam(disc.parameters(), lr=float(config.optimization.disc_lr), betas=(0.8, 0.9))
+    else:
         optimizer_disc = None
+    # cosine annealing scheduler
+    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch)
+    if config.model.train_discriminator:
+        disc_scheduler = LinearWarmupCosineAnnealingLR(optimizer_disc, warmup_epochs=config.lr_scheduler.warmup_epoch, max_epochs=config.common.max_epoch-config.model.train_discriminator_start_epoch)
+    else:
         disc_scheduler = None
 
-    if resume and os.path.exists(checkpoint_path):
+    #Reconstruction loss
+    freq_loss = ReconstructionLoss(alpha=config.loss.alpha, bandwidth=config.loss.bandwidth, sampling_rate=10, n_fft=config.loss.n_fft, device=device)
+
+    if os.path.exists(checkpoint_path):
         start_epoch = load_checkpoint(model, optimizer, scheduler, f"{checkpoint_path}/model.pth", device)
-        if config.discrim.train_discriminator:
-            load_disc(disc, optimizer_disc, disc_scheduler, f"{checkpoint_path}/disc.pth", device)
     else:
         start_epoch = 1
     
-    if config.distributed.data_parallel:
+    if data_parallel:
         model = nn.DataParallel(model)
         disc = nn.DataParallel(disc)
 
     for epoch in tqdm(range(start_epoch, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
-        train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config=config, writer=writer, freq_loss=freq_loss, label_mapping=train_mapping)
+        train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config=config, writer=writer, freq_loss=freq_loss, label_mapping=train_loader.mapping)
         if epoch % config.common.test_interval == 0:
-            test(metrics, epoch,model,disc, val_loader, config, writer, freq_loss=freq_loss, label_mapping=val_mapping)
+            test(metrics, epoch,model,disc, val_loader,config,writer, freq_loss=freq_loss, label_mapping=val_loader.mapping)
         # save checkpoint and epoch
-        if epoch % config.common.save_every == 1:
-            save_checkpoint(model, optimizer, scheduler, epoch, f"{log_dir}/model.pth")
-            if config.discrim.train_discriminator:
-                save_disc(disc, optimizer_disc, disc_scheduler, epoch, f"{log_dir}/disc.pth")
+        if epoch % config.checkpoint.save_every == 1:
+            save_model_wandb(model, optimizer, scheduler, epoch, f"{log_dir}/model.pth")
+            if config.model.train_discriminator:
+                save_disc_wandb(disc, optimizer_disc, disc_scheduler, epoch, f"{log_dir}/disc.pth")
 
+#LONG TERM 

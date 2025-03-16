@@ -297,11 +297,14 @@ if __name__ == "__main__":
     # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250118/135321"
     # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/135321"
 
-    log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250209/142145"
-    save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/142145"
+    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250209/142145"
+    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/142145"
     # encodec\tensorboard\091224_l1\20250209\142145
 
-    datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
+    log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250304/134009"
+    save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/20250304"
+
+    # datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
     # datasets = ["mgh", "shhs2", "shhs1", "mros1", "mros2", "wsc", "cfs"]
     # datasets = ["mgh", "shhs2", "wsc", "chat1", "cfs", "nchsdb"] #thorax 
     # datasets = ["mgh_abdominal"]
@@ -309,10 +312,10 @@ if __name__ == "__main__":
     # datasets = ["wsc_abdominal"]
     # datasets = ["chat1_abdominal"]
     # datasets = ["cfs_abdominal"]
-    # datasets = ["shhs2"] #abdominal
+    datasets = ["shhs2"] #abdominal
     # datasets = ["mgh_rf"] #rf
     resume = False
-    do_channel = ["thorax"]
+    do_channel = ["thorax", "abdominal"]
 
     # Load the YAML file
     config = load_config(f'{log_dir}/config.yaml', log_dir)
@@ -349,7 +352,7 @@ if __name__ == "__main__":
     #     model.module.load_state_dict(checkpoint_model)
     #     disc.module.load_state_dict(checkpoint_disc)
     # else:
-    model.load_state_dict(checkpoint_model)
+    model.load_state_dict(checkpoint_model['model_state_dict'])
     # disc.load_state_dict(checkpoint_disc)
 
     print("Checkpoint loaded successfully!")

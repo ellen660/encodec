@@ -175,7 +175,7 @@ class EuclideanCodebook(nn.Module):
         return x
 
     # TODO: ERROR! every segment is getting mapped to the same index
-    def quantize(self, x, return_soft=True, tau=0.5):
+    def quantize(self, x):
         embed = self.embed.t()
 
         dist = -(
@@ -184,15 +184,8 @@ class EuclideanCodebook(nn.Module):
             + embed.pow(2).sum(0, keepdim=True)
         )
 
-        # if return_soft:
-        #     logits = dist/tau
-        #     soft_targets = F.softmax(logits, dim=-1)
-        # else:
-        #     soft_targets = torch.tensor(0.0).to(x.device)
-
         embed_ind = dist.max(dim=-1).indices
         return embed_ind
-        # return embed_ind, soft_targets
 
     def postprocess_emb(self, embed_ind, shape):
         return embed_ind.view(*shape[:-1])
@@ -222,14 +215,13 @@ class EuclideanCodebook(nn.Module):
         quantize = self.dequantize(embed_ind)
         return quantize
 
-    def forward(self, x, return_soft=True, tau=1.0):
+    def forward(self, x):
         shape, dtype = x.shape, x.dtype
         x = self.preprocess(x)
 
         self.init_embed_(x)
 
-        # embed_ind, soft_targets = self.quantize(x, return_soft, tau)
-        embed_ind = self.quantize(x, return_soft, tau)
+        embed_ind = self.quantize(x)
         embed_onehot = F.one_hot(embed_ind, self.codebook_size).type(dtype)
         embed_ind = self.postprocess_emb(embed_ind, shape)
         # print(f'emb {embed_ind.shape}')
@@ -251,7 +243,6 @@ class EuclideanCodebook(nn.Module):
             embed_normalized = self.embed_avg / cluster_size.unsqueeze(1)
             self.embed.data.copy_(embed_normalized)
 
-        # return quantize, embed_ind, soft_targets
         return quantize, embed_ind
 
 
@@ -313,13 +304,12 @@ class VectorQuantization(nn.Module):
         quantize = rearrange(quantize, "b n d -> b d n")
         return quantize
 
-    def forward(self, x, return_soft=True, tau=0.5):
+    def forward(self, x):
         device = x.device
         x = rearrange(x, "b d n -> b n d")
         x = self.project_in(x)
 
-        # quantize, embed_ind, soft_targets = self._codebook(x, return_soft, tau)
-        quantize, embed_ind = self._codebook(x, return_soft, tau)
+        quantize, embed_ind = self._codebook(x)
 
         if self.training:
             quantize = x + (quantize - x).detach()
@@ -344,7 +334,6 @@ class VectorQuantization(nn.Module):
         quantize = self.project_out(quantize)
         quantize = rearrange(quantize, "b n d -> b d n")
         return quantize, embed_ind, loss
-        # return quantize, embed_ind, loss, soft_targets
 
 # Factorized codes (ViT-VQGAN) Project input into low-dimensional space
         z_e = self.in_proj(z)  # z_e : (B x D x T)
@@ -382,7 +371,7 @@ class ResidualVectorQuantization(nn.Module):
             count += 1
         print(f'codebooks {codebooks}')
 
-    def forward(self, x, n_q: tp.Optional[int] = None, return_quantized=False, return_soft=False, tau=0.1):
+    def forward(self, x, n_q: tp.Optional[int] = None, return_quantized=False):
         # print(f'tau {tau}')
         quantized_out = 0.0
         residual = x
@@ -395,8 +384,7 @@ class ResidualVectorQuantization(nn.Module):
         n_q = n_q or len(self.layers)
 
         for layer in self.layers[:n_q]:
-            # quantized, indices, loss, soft_targets = layer(residual, return_soft, tau)
-            quantized, indices, loss = layer(residual, return_soft, tau)
+            quantized, indices, loss = layer(residual)
 
             #fix issue at https://github.com/facebookresearch/encodec/issues/25
             residual = residual - quantized
@@ -407,12 +395,11 @@ class ResidualVectorQuantization(nn.Module):
             all_indices.append(indices)
             all_losses.append(loss)
             quantized_stack.append(quantized)
-            # soft.append(soft_targets)
 
         out_losses, out_indices = map(torch.stack, (all_losses, all_indices))
         if return_quantized:
-            return quantized_out, out_indices, out_losses, torch.stack(quantized_stack), #torch.stack(soft)
-        return quantized_out, out_indices, out_losses, #torch.stack(soft)
+            return quantized_out, out_indices, out_losses, torch.stack(quantized_stack), 
+        return quantized_out, out_indices, out_losses, 
 
     def encode(self, x: torch.Tensor, n_q: tp.Optional[int] = None) -> torch.Tensor:
         residual = x

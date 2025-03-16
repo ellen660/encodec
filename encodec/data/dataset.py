@@ -1,6 +1,3 @@
-#data loader for shhs2 breathing dataset
-#return the raw breathing, support deubgging
-
 import os
 import sys
 import torch
@@ -15,16 +12,19 @@ from tqdm import tqdm
 class BreathingDataset(Dataset):
     root = "/data/netmit/wifall/ADetect/data"
     NumCv = 4
-    # processed_signal = f"{root}/mgh_train_encodec/abdominal"
-    # if not os.path.exists(processed_signal):
-    #     os.makedirs(processed_signal)
+    modes = ['train', 'val', 'test']
+    datasets = ['shhs2_new', 'shhs1_new', 'mros1_new', 'mros2_new', 'wsc_new', 'cfs', 'mgh_train_encodec', 'mesa_new']
+    channels = ['thorax', 'abdominal']
         
-    def __init__(self, dataset="shhs2_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length=10 * 60 * 60 * 4):
+    def __init__(self, dataset = "shhs2_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length = 10 * 60 * 60 * 4):
+        assert mode in ['train', 'val', 'test'], 'Only support train val or test mode'
+        assert dataset in self.datasets, f'Invalid dataset {dataset}'
+        assert all([channel in self.channels for channel in channels.keys()]), f'Invalid channels {channels}'
+
         self.dataset = dataset
         self.mode = mode
-        assert self.mode in ['train', 'val', 'test'], 'Only support train val or test mode'
         self.cv = cv
-        self.channels = channels # dictionary of channel names and their weights
+        self.channels = channels # thorax or abdominal
         self.ds_dir = os.path.join(self.root, self.dataset)
         self.max_length = max_length
 
@@ -159,18 +159,17 @@ def main():
         print(f'File: {file}, min diff: {min_diff}')
         breakpoint()
 
-        # print(f"File: {file}, breathing shape: {breathing.shape}")
-
-    # dataset = BreathingDataset()
-    # # print(f"Dataset size is {len(dataset)}")
-    # dataloader = DataLoader(dataset, batch_size=1, num_workers = 32, shuffle=True)
-
-    # for i, (features, labels) in enumerate(dataloader):
-    #     breathing = features[0]
-
-    #     print(f"Batch {i+1}:")
-    #     print(f"Features shape: {features.shape}")
-
 if __name__ == '__main__':
     main()
 
+
+
+# STEP_SIZE = 8
+
+# deepsnr_predictor = DeepSNRPredictor() 
+# seg_len = deepsnr_predictor.model.SignalDuration
+# signal_pad = np.pad(data, [[seg_len // 2, seg_len // 2 - 1]], mode="reflect")
+# signal_reshaped = as_sliding_window(signal_pad, seg_len, STEP_SIZE)
+# deepsnr = deepsnr_predictor.predict_batch(signal_reshaped)
+
+#breathing 

@@ -36,7 +36,7 @@ class QuantizedResult:
     quantized: torch.Tensor
     codes: torch.Tensor
     bandwidth: torch.Tensor  # bandwidth in kb/s used, per batch item.
-    soft_targets: tp.Optional[torch.Tensor] = None
+    # soft_targets: tp.Optional[torch.Tensor] = None
     commit_loss: tp.Optional[torch.Tensor] = None
     codebook_loss: tp.Optional[torch.Tensor] = None
     latents: tp.Optional[torch.Tensor] = None
@@ -197,7 +197,7 @@ class EncodecModel(nn.Module):
         encoded_frame = {
             'quantized': quantized_result.quantized,
             'codes': codes,
-            'soft_targets': None,
+            # 'soft_targets': None,
             'commit_loss': quantized_result.commit_loss,
             'codebook_loss': quantized_result.codebook_loss,
             'scale': scale,
