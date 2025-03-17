@@ -1,82 +1,83 @@
 exp_details:
-  name: 'no_discrim'
-  description: '4 hours at 10 hz'
-
+  name: no_discrim
+  description: 4 hours at 10 hz
 common:
   log_every: 10
   save_every: 50
+  test_every: 25
   max_epoch: 100
   seed: 42
-  gradient_clipping: True
+  gradient_clipping: true
   gradient_clipping_value: 0.1
   num_workers: 10
-  debug: False
-
+  debug: false
 optimization:
-  lr: 1e-4 #base learning rate 1e-4
-  batch_size: 48
+  lr: 0.0001
+  batch_size: 32
   beta1: 0.8
   beta2: 0.9
   warmup_epoch: 10
-
 dataset:
-  max_length: 144000 # 4 hours at 10 hz
-  external: True #if True, adds additional mesa dataset to validation
+  max_length: 144000
+  external: true
   cv: 0
-  mgh: 0.
-  shhs1: 1.
-  shhs2: 1.
-  mros1: 1.
-  mros2: 1.
-  wsc: 1.
-  cfs: 1.
-  bwh: 1.
+  mgh: 0
+  shhs1: 1
+  shhs2: 1
+  mros1: 1
+  mros2: 1
+  wsc: 1
+  cfs: 1
+  bwh: 1
   thorax: 0.5
   abdominal: 0.5
-
 loss:
-  weight_l1: 1.0
+  weight_l1: 1
   weight_l2: 0.01
   weight_commit: 0.25
   weight_freq: 0.25
-  weight_g: 3.
-  weight_feat: 3.
+  weight_g: 3
+  weight_feat: 3
   commit_start_epoch: 30
-
 spectrogram_loss:
   alpha: 0.01
   bandwidth: null
-  n_fft: 1024 # reconstruction loss n_fft
-  hop_length: 50 
+  n_fft: 1024
+  hop_length: 50
   win_length: 300
-
 model:
-  # ratios: [5, 5, 2, 1] # 50 downsampling 5 seconds
-  ratios: [6,5,5,2,1] # 300 downsampling 30 seconds
-  # ratios: [5,5,4,1] #100 downsampling 10 seconds
-  # ratios: [6,5,5,1] # 150 downsampling 15 seconds
-  # ratios: [10, 6, 5, 1]# 30 seconds
-  bins: 1024
+  ratios:
+    - 6
+    - 5
+    - 5
+    - 2
+    - 1
+  bins: 512
   dimension: 256
-  target_bandwidths: [0.08] #0.1 is 10 codebooks, 0.2 is 20 codebooks
-  audio_normalize: False
-  causal: True
-  # norm: 'weight_norm'
-  norm: 'layer_norm'
+  target_bandwidths:
+    - 0.32
+  audio_normalize: false
+  causal: true
+  norm: layer_norm
   segment: None
-  name: 'my_encodec'
+  name: my_encodec
   sample_rate: 10
   channels: 1
-
 discrim:
-  train_discriminator: False # you can set it to 2/3 and other number to train discriminator only
+  train_discriminator: false
   train_discriminator_start_epoch: 0
-  train_discriminator_prob: 0.
-  disc_hop_lengths: [20, 128]
-  disc_win_lengths: [100, 512]
-  disc_n_ffts: [1024, 1024]
+  train_discriminator_prob: 0
+  disc_hop_lengths:
+    - 20
+    - 128
+  disc_win_lengths:
+    - 100
+    - 512
+  disc_n_ffts:
+    - 1024
+    - 1024
   filters: 32
-  
 distributed:
-  data_parallel: True
-  world_size: 8 
+  data_parallel: true
+  world_size: 8
+optimizationbatch_size: 16

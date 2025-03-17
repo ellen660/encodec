@@ -27,8 +27,8 @@ def init_dataset(config):
             else:
                 train_datasets.append(BreathingDataset(dataset = ds_name, mode = "train", cv = cv, channels = channels, max_length = max_length))
                 val_datasets.append(BreathingDataset(dataset = ds_name, mode = "val", cv = cv, channels = channels, max_length = max_length))
-            train_weight.append(weight)
-            val_weight.append(weight)
+            train_weight.append(float(weight))
+            val_weight.append(float(weight))
 
     #Holdout/external dataset
     val_datasets.append(BreathingDataset(dataset = "mesa_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
@@ -36,7 +36,7 @@ def init_dataset(config):
 
     print("Number of training datasets: ", len(train_datasets))
     # merge the datasets
-    train_dataset = MergedDataset(train_datasets, train_weight, 1, config.common.debug)
+    train_dataset = MergedDataset(train_datasets, train_weight, 1., config.common.debug)
     val_dataset = MergedDataset(val_datasets, val_weight, 0.2, config.common.debug)
     train_loader = DataLoader(train_dataset, batch_size=config.optimization.batch_size, shuffle=True, num_workers=config.common.num_workers)
     val_loader = DataLoader(val_dataset, batch_size=config.optimization.batch_size, shuffle=False, num_workers=config.common.num_workers)

@@ -349,46 +349,6 @@ def init_logger(log_dir, resume=False):
         writer = SummaryWriter(log_dir=log_dir)
     return writer
 
-# def init_dataset(config):
-#     cv = config.dataset.cv
-#     max_length = config.dataset.max_length
-#     weights = {
-#         "mgh_train_encodec": config.dataset.mgh,
-#         "shhs2_new": config.dataset.shhs2,
-#         "shhs1_new": config.dataset.shhs1,
-#         "mros1_new": config.dataset.mros1,
-#         "mros2_new": config.dataset.mros2,
-#         "wsc_new": config.dataset.wsc,
-#         "cfs": config.dataset.cfs,
-#         "bwh_new": config.dataset.bwh
-#     }
-
-#     train_datasets, val_datasets, train_weight, val_weight = [], [], [], []
-#     channels = {'thorax': config.dataset.thorax, 'abdominal': config.dataset.abdominal}
-#     for ds_name, weight in weights.items():
-#         if weight > 0:
-#             if ds_name == "bwh_new":
-#                 train_datasets.append(BwhDataset(dataset = ds_name, mode = "train", cv = cv, channels = {"thorax": 1.0}, max_length = max_length))
-#                 val_datasets.append(BwhDataset(dataset = ds_name, mode = "val", cv = cv, channels = {"thorax": 1.0}, max_length = max_length))
-#             else:
-#                 train_datasets.append(BreathingDataset(dataset = ds_name, mode = "train", cv = cv, channels = channels, max_length = max_length))
-#                 val_datasets.append(BreathingDataset(dataset = ds_name, mode = "val", cv = cv, channels = channels, max_length = max_length))
-#             train_weight.append(weight)
-#             val_weight.append(weight)
-
-#     #Holdout/external dataset
-#     val_datasets.append(BreathingDataset(dataset = "mesa_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
-#     val_weight.append(1.)
-
-#     print("Number of training datasets: ", len(train_datasets))
-#     # merge the datasets
-#     train_dataset = MergedDataset(train_datasets, train_weight, 1, config.common.debug)
-#     val_dataset = MergedDataset(val_datasets, val_weight, 0.2, config.common.debug)
-#     train_loader = DataLoader(train_dataset, batch_size=config.optimization.batch_size, shuffle=True, num_workers=config.common.num_workers)
-#     val_loader = DataLoader(val_dataset, batch_size=config.optimization.batch_size, shuffle=False, num_workers=config.common.num_workers)
-#     print(f'Merged dataset size: {len(train_dataset)}')
-#     return train_loader, val_loader, train_dataset.mapping, val_dataset.mapping
-
 def init_model(config):
     model = EncodecModel._get_model(
         config.model.target_bandwidths, 
@@ -466,6 +426,7 @@ def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp_name", type=str, default="091224_l1")
     parser.add_argument("--resume_from", type=str, default=f"/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250304/134009/no")
+    parser.add_argument("--log_dir", type=str, default=None)
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -493,9 +454,12 @@ if __name__ == "__main__":
     else:
         resume=False  
         config = load_config("encodec/params/%s.yaml" % args.exp_name)
-        curr_time = datetime.now().strftime("%Y%m%d")
-        curr_minute = datetime.now().strftime("%H%M%S")
-        log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_minute}/{int(100*float(config.model.target_bandwidths[0]))}codebooks_{config.model.bins}bins_{np.prod(config.model.ratios)}downsample'
+        if args.log_dir:
+            log_dir = args.log_dir
+        else:
+            curr_time = datetime.now().strftime("%Y%m%d")
+            curr_minute = datetime.now().strftime("%H%M%S")
+            log_dir = f'/data/scratch/ellen660/encodec/encodec/tensorboard/{args.exp_name}/{curr_time}/{curr_minute}/{int(100*float(config.model.target_bandwidths[0]))}codebooks_{config.model.bins}bins_{np.prod(config.model.ratios)}downsample'
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         # Load the YAML file
@@ -542,7 +506,7 @@ if __name__ == "__main__":
 
     for epoch in tqdm(range(start_epoch, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
         train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config=config, writer=writer, freq_loss=freq_loss, label_mapping=train_mapping)
-        if epoch % config.common.test_interval == 0:
+        if epoch % config.common.test_every == 0:
             test(metrics, epoch,model,disc, val_loader, config, writer, freq_loss=freq_loss, label_mapping=val_mapping)
         # save checkpoint and epoch
         if epoch % config.common.save_every == 1:
