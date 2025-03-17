@@ -2,18 +2,18 @@ exp_details:
   name: no_discrim
   description: 4 hours at 10 hz
 common:
-  log_every: 10
+  log_every: 1
   save_every: 50
   test_every: 25
-  max_epoch: 100
+  max_epoch: 10
   seed: 42
   gradient_clipping: true
   gradient_clipping_value: 0.1
   num_workers: 10
-  debug: false
+  debug: true
 optimization:
   lr: 0.0001
-  batch_size: 32
+  batch_size: 16
   beta1: 0.8
   beta2: 0.9
   warmup_epoch: 10
@@ -55,7 +55,7 @@ model:
   bins: 512
   dimension: 256
   target_bandwidths:
-    - 0.32
+    - 0.08
   audio_normalize: false
   causal: true
   norm: layer_norm

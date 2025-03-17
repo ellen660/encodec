@@ -13,6 +13,7 @@ class MergedDataset(Dataset):
         print(f'===> Dataset Merged: {self.weight}')
         if debug:
             size = 512
+            print(f'===> Debug mode: dataset size {size}')
         else:
             size = 2048
         self.size = round(size * sfreq)
