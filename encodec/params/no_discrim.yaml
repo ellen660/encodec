@@ -2,18 +2,18 @@ exp_details:
   name: no_discrim
   description: 4 hours at 10 hz
 common:
-  log_every: 1
+  log_every: 5
   save_every: 50
   test_every: 25
-  max_epoch: 10
+  max_epoch: 51
   seed: 42
   gradient_clipping: true
   gradient_clipping_value: 0.1
   num_workers: 10
-  debug: true
+  debug: false
 optimization:
-  lr: 0.0001
-  batch_size: 16
+  lr: 1.0e-05
+  batch_size: 32
   beta1: 0.8
   beta2: 0.9
   warmup_epoch: 10

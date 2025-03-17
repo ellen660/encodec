@@ -4,20 +4,19 @@
 yaml_file="no_discrim"
 path="/data/scratch/ellen660/encodec/encodec/params/$yaml_file.yaml"
 export CUDA_VISIBLE_DEVICES=0,1,4,5,6,7 
+run_name="test_v_1"
 
 declare -A hyperparameters
 hyperparameters=(
   [".optimization.lr"]="1e-4"
   [".optimization.batch_size"]="32"
   [".model.bins"]="512"
-  [".common.log_every"]="1"
-  [".common.max_epoch"]="10"
-  [".common.debug"]=true
+  [".common.max_epoch"]="51"
 )
 
 #Iterate over a bunch 
-lr_list=("1e-4" "1e-2")  
-batch_size_list=("16" "32")  
+lr_list=("1e-5" "1e-4" "1e-3")  
+batch_size_list=("32")  
 
 # Iterate over all combinations of hyperparameters
 for lr in "${lr_list[@]}"; do
@@ -39,8 +38,7 @@ for lr in "${lr_list[@]}"; do
 
     # Log directory
     curr_time=$(date +%Y%m%d)
-    curr_minute=$(date +%H%M%S)
-    log_dir="/data/scratch/ellen660/encodec/encodec/ablations/$yaml_file/$curr_time/$curr_minute/$comment"
+    log_dir="/data/scratch/ellen660/encodec/encodec/ablations/$yaml_file/$curr_time/$run_name/$comment"
 
     # Run the Python training script with the updated parameters
     python encodec/train.py --exp_name "$yaml_file" --log_dir "$log_dir" 
