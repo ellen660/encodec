@@ -3,7 +3,7 @@ import sys
 import torch
 import torch.nn as nn
 
-from model import EncodecModel
+from clean_model import EncodecModel
 from data.dataset import BreathingDataset
 from data.bwh import BwhDataset
 
@@ -16,10 +16,7 @@ from tqdm import tqdm
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
-
-from my_code.spectrogram_loss import BreathingSpectrogram, ReconstructionLoss, ReconstructionLosses
-import torch.multiprocessing as mp
-import time
+from typing import List
 
 class ConfigNamespace:
     """Converts a dictionary into an object-like namespace for easy attribute access."""
@@ -42,8 +39,7 @@ def init_model(config):
         config.model.sample_rate, 
         config.model.channels,
         causal=config.model.causal, model_norm=config.model.norm, 
-        audio_normalize=config.model.audio_normalize,
-        segment=eval(config.model.segment), name=config.model.name,
+        segment=eval(config.model.segment), 
         ratios=config.model.ratios,
         bins=config.model.bins,
         dimension=config.model.dimension,
@@ -77,11 +73,6 @@ def init_dataset(config, mode="test"):
     thorax_channels = {"thorax": 1.} #Hard code for now
     abdominal_channels = {"abdominal": 1.}
     rf_channels = {"rf": 1.}
-    
-    # if mode == "test":
-    #     mgh_dataset = "mgh_new"
-    # else:
-    #     mgh_dataset = "mgh_train_encodec"
 
     datasets["mgh"]={"thorax":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
                      "abdominal":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length)),
@@ -132,27 +123,23 @@ def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done, 
     """
     Process a single dataset on the specified GPU.
     """
-    os.makedirs(os.path.join(save_dir, ds_name, channel), exist_ok=True)
     test_ds.file_list = [f for f in test_ds.file_list if f not in done]
     test_loader = DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=4)
     l1, count = 0, 0
     for item in tqdm(test_loader, desc=f"Processing {ds_name}"):
         x = item["x"].to(device)
-        filename = item["filename"]
+        filename = item["filename"][0]
         x_hat, codes, _, _, = model(x)
-        # breakpoint()
-        # x_hat = x_hat.squeeze().cpu().detach().numpy()
         l1 += torch.nn.L1Loss(reduction='mean')(x, x_hat).item()
         count += 1
 
         # Save the prediction
-        # np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename[0]), data=x_hat, fs=10)
+        # np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename), data=x_hat, fs=10)
 
         # Save the codes
-        save_path = os.path.join(save_dir, ds_name, channel, filename[0])
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        save_path = os.path.join(save_dir, ds_name, channel, filename)
+        # os.makedirs(os.path.dirname(save_path), exist_ok=True)
         np.savez(save_path, data=codes.squeeze().cpu().detach().numpy(), fs=10/compression_ratio)
-        # time.sleep(1)
     print(f"Finished processing {ds_name} for channel {channel}")
     return l1 / count if count != 0 else None
 
@@ -272,112 +259,49 @@ def plot_most_frequent_signals(ds_name, pivot, model, save_dir, config, device):
 
     print(f"Finished processing {ds_name}")
 
+def set_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--user_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/ablations")
+    parser.add_argument("--save_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/predictions")
+    parser.add_argument("--model_dir", type=str, default="no_discrim/45_seconds/20250331/ max_epoch=200 debug=false bins=512 discrim=false batch_size=12 lr=1e-4")
+    parser.add_argument("--datasets", type=List[str], default=["shhs2"])
+    parser.add_argument("--resume", type=bool, default=True)
+    parser.add_argument("--do_channel", type=List[str], default=["thorax", "abdominal"])
+    #    # datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
+    return parser.parse_args()
+
 if __name__ == "__main__":
-
-    # log_dir = "tensorboard/231224_l1"
-    # log_dir = "tensorboard/261224_l1"
-    # log_dir = "tensorboard/271224_l1"
-    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_5s"
-    
-    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s"
-    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s"
-
-    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_disc"
-    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_disc"
-
-    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_new"
-    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_new"
-
-    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250114/175306"
-    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/175306"
-
-    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250115/140935"
-    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/140935"
-
-    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250118/135321"
-    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/135321"
-
-    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250209/142145"
-    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/142145"
-    # encodec\tensorboard\091224_l1\20250209\142145
-
-    log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250304/134009"
-    save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/20250304"
-
-    # datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
-    # datasets = ["mgh", "shhs2", "shhs1", "mros1", "mros2", "wsc", "cfs"]
-    # datasets = ["mgh", "shhs2", "wsc", "chat1", "cfs", "nchsdb"] #thorax 
-    # datasets = ["mgh_abdominal"]
-    # datasets = ["shhs2_abdominal"]
-    # datasets = ["wsc_abdominal"]
-    # datasets = ["chat1_abdominal"]
-    # datasets = ["cfs_abdominal"]
-    datasets = ["shhs2"] #abdominal
-    # datasets = ["mgh_rf"] #rf
-    resume = False
-    do_channel = ["thorax", "abdominal"]
+    args = set_args()
+    log_dir = os.path.join(args.user_dir, args.model_dir)
+    save_dir = os.path.join(args.save_dir, args.model_dir)
+    datasets = args.datasets
+    resume = args.resume
+    do_channel = args.do_channel
 
     # Load the YAML file
     config = load_config(f'{log_dir}/config.yaml', log_dir)
+    compression_ratio = np.prod(config.model.ratios)
+    print(f'compression ratio {compression_ratio}')
 
-    # Initialize model and discriminator
-    # val_ds = BreathingDataset(dataset="shhs2_new", mode="test", cv=0, channels={"thorax": 1.0}, max_length=None)
-    # val_loader = DataLoader(val_ds, batch_size=1, shuffle=False, num_workers=4)
-
-    test_datasets = init_dataset(config, mode="test")
+    # Initialize directories
     os.makedirs(save_dir, exist_ok=True)
-    for ds_name in test_datasets.keys():
+    for ds_name in datasets:
         for channel in do_channel:
             os.makedirs(os.path.join(save_dir, ds_name, channel), exist_ok=True)
 
+    #Initialize the model
     model = init_model(config)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Move to device
     model = model.to(device)
-
-    # Checkpoint path (set this to your specific checkpoint)
     checkpoint_path_model = f"{log_dir}/model.pth"
     # checkpoint_path_disc = f"{log_dir}/disc.pth"
-
-    compression_ratio = np.prod(config.model.ratios)
-
-    # ===================== RELOAD CHECKPOINT =====================
     print("Loading model and discriminator from checkpoint...")
     checkpoint_model = torch.load(checkpoint_path_model, map_location=device)
     # checkpoint_disc = torch.load(checkpoint_path_disc, map_location=device)
-
-    # Load state_dict into model and discriminator
-    # if config.distributed.data_parallel:
-    #     model.module.load_state_dict(checkpoint_model)
-    #     disc.module.load_state_dict(checkpoint_disc)
-    # else:
     model.load_state_dict(checkpoint_model['model_state_dict'])
     # disc.load_state_dict(checkpoint_disc)
-
     print("Checkpoint loaded successfully!")
-
     model.eval()
-    
-    # for ds_name, test_ds in test_datasets.items():
-    #     print(f'processing for {ds_name}')
-    #     test_loader = DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=10)
-    #     for i, item in enumerate(tqdm(test_loader)):
-    #         x = item["x"]
-    #         filename = item["filename"]
-    #         x = x.to(device)
-    #         x_hat, codes, _, _ = model(x)
-    #         x_hat = x_hat.squeeze().cpu().detach().numpy()
-
-    #         # save the prediction in the folder
-    #         # np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename[0]), data=x_hat, fs = 10)
-
-    #         # save the codes in the folder
-    #         np.savez(os.path.join(save_dir, ds_name, "codes", filename[0]), data=codes.squeeze().cpu().detach().numpy(), fs = 10/compression_ratio)
-
-    print(f'log_dir {log_dir}')
-    print(f'datasets {datasets}')
-    print(f'channel {do_channel}')
 
     #Code Generation
     test_datasets = init_dataset(config, mode="test")
@@ -386,7 +310,7 @@ if __name__ == "__main__":
             try:
                 test_ds = test_datasets[ds_name][channel]
             except:
-                print(f'channel {channel} not ofund in dataset {ds_name}')
+                print(f'channel {channel} not found in dataset {ds_name}')
                 break
             done = set()
             if resume:
@@ -473,3 +397,31 @@ if __name__ == "__main__":
     #         df.to_excel(writer, sheet_name=sheet_name, index=False)
 
     # print(f"Excel file with 32 sheets saved as {output_file}")
+
+
+
+
+    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s"
+    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s"
+
+    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_disc"
+    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_disc"
+
+    # log_dir = "/data/netmit/wifall/breathing_tokenizer/encodec_weights/model_30s_new"
+    # save_dir = "/data/netmit/wifall/breathing_tokenizer/predictions/model_30s_new"
+
+    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250114/175306"
+    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/175306"
+
+    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250115/140935"
+    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/140935"
+
+    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250118/135321"
+    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/135321"
+
+    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250209/142145"
+    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/142145"
+    # encodec\tensorboard\091224_l1\20250209\142145
+
+    # log_dir = "/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250304/134009"
+    # save_dir = "/data/scratch/ellen660/encodec/encodec/predictions/20250304"

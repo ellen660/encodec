@@ -1,4 +1,4 @@
-from model import EncodecModel
+from clean_model import EncodecModel
 from data import init_dataset
 from losses import total_loss, disc_loss, Metrics, MetricsArgs, LinearWarmupCosineAnnealingLR, WarmupScheduler, ReconstructionLoss
 from msstftd import MultiScaleSTFTDiscriminator
@@ -267,7 +267,7 @@ def test(metrics, epoch, model, disc, val_loader, config, writer, freq_loss, lab
 
             fig.tight_layout()
             if user_name == 'ellen660':
-                fig.savefig(f'/data/scratch/ellen660/encodec/encodec/tensorboard/{config.exp_details.name}/{epoch}.png')
+                fig.savefig(f'/data/scratch/ellen660/encodec/encodec/ablations/{config.exp_details.name}/{config.exp_details.description}/{epoch}.png')
             elif user_name == 'chaoli':
                 fig.savefig(f'/data/netmit/wifall/breathing_tokenizer/encodec/encodec/tensorboard/{config.exp_details.name}/reconstructed_{epoch}.png')
             else:
@@ -355,8 +355,8 @@ def init_model(config):
         config.model.sample_rate, 
         config.model.channels,
         causal=config.model.causal, model_norm=config.model.norm, 
-        audio_normalize=config.model.audio_normalize,
-        segment=eval(config.model.segment), name=config.model.name,
+        # audio_normalize=config.model.audio_normalize,
+        segment=eval(config.model.segment), #name=config.model.name,
         ratios=config.model.ratios,
         bins=config.model.bins,
         dimension=config.model.dimension,
@@ -394,6 +394,15 @@ def save_checkpoint(model, optimizer, scheduler, epoch, path):
     torch.save(checkpoint, path)
     print(f"Model saved at epoch {epoch}") 
 
+def load_checkpoint(model, optimizer, scheduler, path, device):
+    checkpoint = torch.load(path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    epoch = checkpoint['epoch'] + 1  # Resume from next epoch
+    print(f"Model loaded: Resuming from epoch {epoch}")
+    return epoch 
+
 def save_disc(disc, disc_optimizer, disc_scheduler, epoch, path):
     checkpoint = {
         'epoch': epoch,
@@ -403,15 +412,6 @@ def save_disc(disc, disc_optimizer, disc_scheduler, epoch, path):
     }
     torch.save(checkpoint, path)
     print(f"Disc saved at epoch {epoch}")
-
-def load_checkpoint(model, optimizer, scheduler, path, device):
-    checkpoint = torch.load(path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-    epoch = checkpoint['epoch'] + 1  # Resume from next epoch
-    print(f"Model loaded: Resuming from epoch {epoch}")
-    return epoch 
 
 def load_disc(disc, disc_optimizer, disc_scheduler, path, device):
     checkpoint = torch.load(path, map_location=device)
@@ -425,7 +425,7 @@ def load_disc(disc, disc_optimizer, disc_scheduler, path, device):
 def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp_name", type=str, default="091224_l1")
-    parser.add_argument("--resume_from", type=str, default=f"/data/scratch/ellen660/encodec/encodec/tensorboard/091224_l1/20250304/134009/no")
+    parser.add_argument("--resume_from", type=str, default=None)
     parser.add_argument("--log_dir", type=str, default=None)
     return parser.parse_args()
 
@@ -499,14 +499,14 @@ if __name__ == "__main__":
             load_disc(disc, optimizer_disc, disc_scheduler, f"{checkpoint_path}/disc.pth", device)
     else:
         start_epoch = 1
-    
+        
     if config.distributed.data_parallel:
         model = nn.DataParallel(model)
         disc = nn.DataParallel(disc)
 
-    for epoch in tqdm(range(start_epoch, config.common.max_epoch+1), desc="Epochs", unit="epoch"):
+    for epoch in tqdm(range(start_epoch, config.common.max_epoch+2), desc="Epochs", unit="epoch"):
         train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_scheduler, model, disc, train_loader, config=config, writer=writer, freq_loss=freq_loss, label_mapping=train_mapping)
-        if epoch % config.common.test_every == 0:
+        if epoch % config.common.test_every == 1:
             test(metrics, epoch,model,disc, val_loader, config, writer, freq_loss=freq_loss, label_mapping=val_mapping)
         # save checkpoint and epoch
         if epoch % config.common.save_every == 1:

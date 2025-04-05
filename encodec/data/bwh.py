@@ -170,7 +170,7 @@ class BwhDataset(Dataset):
             breathing = self.process_signal(breathing, fs)
         elif self.mode == "test":
             filepath = os.path.join(self.ds_dir, selected_channel, filename)
-            print(f'filepath: {filepath}')
+            # print(f'filepath: {filepath}')
             breathing = np.load(filepath)['data'].squeeze()
             fs = np.load(filepath)['fs']
             assert fs == 200, "Sampling rate is not 200Hz"

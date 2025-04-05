@@ -119,14 +119,8 @@ class NormConv1d(nn.Module):
 
     def forward(self, x):
         x = self.conv(x)
-        # x_transposed = x.transpose(1, 2)  # Change shape to (12, 144000, 32)
-        # print(f'before: {x_transposed.shape}')
-        # output = self.norm(x.transpose(1,2)) # Normalize and return to original shape
         x = self.norm(x)
-        # print(f'after: {output.shape}')
-        # print(f'x.shape: {x}')
         return x
-        # return output.transpose(1, 2)
 
 
 class NormConv2d(nn.Module):

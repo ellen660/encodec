@@ -18,7 +18,6 @@ from . import (
     SLSTM
 )
 
-
 class SEANetResnetBlock(nn.Module):
     """Residual block from SEANet model.
     Args:

@@ -1,6 +1,11 @@
 import pickle
 from typing import cast
 import numpy as np
+from encodec.data import BwhDataset
+from encodec.data.all_datasets import MergedDataset
+from torch.utils.data import DataLoader 
+import os
+from tqdm import tqdm
 
 class DeepSNRPredictor:
     BATCH_SIZE = 256
@@ -86,11 +91,31 @@ def as_sliding_window(array, window_size, stride):
     return rolled[np.arange(0, shape[0], stride)]
 
 if __name__ == '__main__':
-    data = np.random.rand(10*60*60*4)
-    STEP_SIZE = 8
+    root = "/data/netmit/sleep_lab/ali_2/bwh_encodec"
+    save_dir = "/data/netmit/sleep_lab/ali_2/encodec_snr"
+    done = [f for f in os.listdir(save_dir) if f.endswith(".npy")]
+    done = [f.replace(".npy", ".npz") for f in done]
+    breakpoint()
+    data = BwhDataset(dataset = "bwh_new", mode = "test", cv = 0, channels = {"thorax": 1.0}, max_length = 10*60*60*4)
+    dataset = DataLoader(data, batch_size=1, shuffle=False, num_workers=10)
+    print(f'size dataset: {len(dataset)}')
+    # test = np.random.rand(10*60*60*4)
+    STEP_SIZE = 8 #so one noise label every 80 seconds
 
     deepsnr_predictor = DeepSNRPredictor() 
     seg_len = deepsnr_predictor.model.SignalDuration
-    signal_pad = np.pad(data, [[seg_len // 2, seg_len // 2 - 1]], mode="reflect")
-    signal_reshaped = as_sliding_window(signal_pad, seg_len, STEP_SIZE)
-    deepsnr = deepsnr_predictor.predict_batch(signal_reshaped)
+    for i, item in enumerate(tqdm(dataset)):
+        breathing = item["x"].squeeze(0).squeeze(0).numpy()
+        filename = item["filename"][0]
+        print(f'breathing shape: {breathing.shape}, filename: {filename}')
+        if filename in done:
+            continue
+
+        signal_pad = np.pad(breathing, [[seg_len // 2, seg_len // 2 - 1]], mode="reflect")
+        signal_reshaped = as_sliding_window(signal_pad, seg_len, STEP_SIZE)
+        deepsnr = deepsnr_predictor.predict_batch(signal_reshaped)
+        #save deepsnr to file
+        save_path = os.path.join(save_dir, filename.replace(".npz", ".npy"))
+        np.save(save_path, deepsnr)
+        print(f'save_path: {save_path}')
+        # breakpoint()

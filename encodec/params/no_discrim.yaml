@@ -1,19 +1,19 @@
 exp_details:
   name: no_discrim
-  description: 4 hours at 10 hz
+  description: 30_seconds
 common:
   log_every: 5
   save_every: 50
   test_every: 25
-  max_epoch: 51
+  max_epoch: 200
   seed: 42
   gradient_clipping: true
   gradient_clipping_value: 0.1
   num_workers: 10
   debug: false
 optimization:
-  lr: 1.0e-05
-  batch_size: 32
+  lr: 0.0001
+  batch_size: 12
   beta1: 0.8
   beta2: 0.9
   warmup_epoch: 10
@@ -47,15 +47,15 @@ spectrogram_loss:
   win_length: 300
 model:
   ratios:
-    - 6
     - 5
     - 5
+    - 3
     - 2
-    - 1
+    - 2
   bins: 512
   dimension: 256
   target_bandwidths:
-    - 0.08
+    - 0.32
   audio_normalize: false
   causal: true
   norm: layer_norm
@@ -63,6 +63,7 @@ model:
   name: my_encodec
   sample_rate: 10
   channels: 1
+  discrim: false
 discrim:
   train_discriminator: false
   train_discriminator_start_epoch: 0
@@ -80,4 +81,3 @@ discrim:
 distributed:
   data_parallel: true
   world_size: 8
-optimizationbatch_size: 16

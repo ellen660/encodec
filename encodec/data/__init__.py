@@ -2,8 +2,9 @@ from .all_datasets import MergedDataset
 from .dataset import BreathingDataset
 from .bwh import BwhDataset
 from torch.utils.data import DataLoader
+import torch
 
-def init_dataset(config):
+def init_dataset(config, ddp=False):
     cv = config.dataset.cv
     max_length = config.dataset.max_length
     weights = {
@@ -38,7 +39,12 @@ def init_dataset(config):
     # merge the datasets
     train_dataset = MergedDataset(train_datasets, train_weight, 1., config.common.debug)
     val_dataset = MergedDataset(val_datasets, val_weight, 0.2, config.common.debug)
-    train_loader = DataLoader(train_dataset, batch_size=config.optimization.batch_size, shuffle=True, num_workers=config.common.num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=config.optimization.batch_size, shuffle=False, num_workers=config.common.num_workers)
-    print(f'Merged dataset size: {len(train_dataset)}')
-    return train_loader, val_loader, train_dataset.mapping, val_dataset.mapping
+
+    if not ddp:
+        train_loader = DataLoader(train_dataset, batch_size=config.optimization.batch_size, shuffle=True, num_workers=config.common.num_workers)
+        val_loader = DataLoader(val_dataset, batch_size=config.optimization.batch_size, shuffle=False, num_workers=config.common.num_workers)
+
+        print(f'Merged dataset size: {len(train_dataset)}')
+        return train_loader, val_loader, train_dataset.mapping, val_dataset.mapping
+    else:
+        return train_dataset, val_dataset, train_dataset.mapping, val_dataset.mapping

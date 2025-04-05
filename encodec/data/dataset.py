@@ -13,8 +13,8 @@ class BreathingDataset(Dataset):
     root = "/data/netmit/wifall/ADetect/data"
     NumCv = 4
     modes = ['train', 'val', 'test']
-    datasets = ['shhs2_new', 'shhs1_new', 'mros1_new', 'mros2_new', 'wsc_new', 'cfs', 'mgh_train_encodec', 'mesa_new']
-    channels = ['thorax', 'abdominal']
+    datasets = ['shhs2_new', 'shhs1_new', 'mros1_new', 'mros2_new', 'wsc_new', 'cfs', 'mgh_train_encodec', 'mesa_new', 'mgh_new', 'chat1', 'nchsdb']
+    channels = ['thorax', 'abdominal', 'rf']
         
     def __init__(self, dataset = "shhs2_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length = 10 * 60 * 60 * 4):
         assert mode in ['train', 'val', 'test'], 'Only support train val or test mode'
