@@ -51,10 +51,18 @@ class BwhPpgDataset(Dataset):
     
     def process_signal(self, signal, fs):
         #divide by mean, std
-        signal = signal - np.mean(signal, axis=0, keepdims=True)
-        signal = signal / np.std(signal, axis=0, keepdims=True)
+        def signal_crop(signal, clip_limit=6):
+            signal = np.clip(signal, -clip_limit, clip_limit)
+            return signal
+
+        def norm_sig(input_sig):
+            return (input_sig - np.mean(input_sig)) / np.std(input_sig)
+        
+        signal = signal_crop(signal)
+        signal = norm_sig(signal)
 
         return signal
+    
 
     def __getitem__(self, idx):
         filename = self.file_list[idx]
