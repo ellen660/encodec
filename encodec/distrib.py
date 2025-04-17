@@ -32,6 +32,8 @@ def is_distributed():
 def all_reduce(tensor: torch.Tensor, op=torch.distributed.ReduceOp.SUM):
     if is_distributed():
         return torch.distributed.all_reduce(tensor, op)
+    else:
+        return tensor
 
 
 def _is_complex_or_float(tensor):
@@ -122,3 +124,4 @@ def average_metrics(metrics: tp.Dict[str, float], count=1.):
     all_reduce(tensor)
     averaged = (tensor[:-1] / tensor[-1]).cpu().tolist()
     return dict(zip(keys, averaged))
+

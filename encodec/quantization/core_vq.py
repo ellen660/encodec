@@ -370,6 +370,7 @@ class ResidualVectorQuantization(nn.Module):
             codebooks[count] = layer.codebook
             count += 1
         print(f'codebooks {codebooks}')
+        return codebooks
 
     def forward(self, x, n_q: tp.Optional[int] = None, return_quantized=False):
         # print(f'tau {tau}')

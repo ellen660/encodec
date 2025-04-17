@@ -73,8 +73,9 @@ class EncodecModel(nn.Module):
         self.n_q = quantizer.n_q
         assert 2 ** self.bits_per_codebook == self.quantizer.bins, "quantizer bins must be a power of 2."
         assert self.segment == None, f"expected segment to be none, got {self.segment}"
-        assert self.sample_rate == 10
+        assert self.sample_rate == 100
         assert self.channels == 1
+        print(f'number of codebooks {self.n_q}')
         
     @property
     def segment_length(self) -> tp.Optional[int]:

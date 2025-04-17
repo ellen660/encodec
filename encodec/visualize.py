@@ -153,7 +153,7 @@ def set_args():
     
     return parser.parse_args()
 
-def get_data_distribution(ds_name, channel, train_ds, save_dir=f"/data/scratch/ellen660/encodec/encodec/visualizations"):
+def get_data_distribution(ds_name, channel, train_ds, save_dir=f"/data/scratch/ellen660/encodec/encodec/visualizations/data"):
     """
     Plot distribution for dataset
     """
@@ -576,8 +576,8 @@ if __name__ == "__main__":
     model.eval()
     # disc.eval()
     
-    # ds_names = ["mgh", "shhs2", "shhs1", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
-    ds_names = ["bwh"]
+    ds_names = ["shhs2", "shhs1", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa"]
+    # ds_names = ["bwh"]
     train_datasets = init_dataset(config, mode="train")
     # get_zeros("bwh", "thorax", train_datasets["bwh"]["thorax"])
 
@@ -585,9 +585,9 @@ if __name__ == "__main__":
     # plot_original_signals(ds_names, train_datasets)
 
     # #Data Distribution w/ Flipping
-    # for ds_name in ds_names:
-    #     for channel, train_ds in train_datasets[ds_name].items():
-    #         get_data_distribution(ds_name, channel, train_ds)
+    for ds_name in ds_names:
+        for channel, train_ds in train_datasets[ds_name].items():
+            get_data_distribution(ds_name, channel, train_ds)
 
     # # #Patient Distribution
     # for ds_name in ds_names:

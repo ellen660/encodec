@@ -20,20 +20,20 @@ def sliding_std(data, window_size):
 
     return np.sqrt(np.maximum(window_var, 0))  # Avoid numerical errors
 
-# max_length = 10 * 60 * 60 * 4
-# fs = 10
-max_length = 200 * 60 * 60 * 4
-fs = 200
+max_length = 10 * 60 * 60 * 4
+fs = 10
+# max_length = 200 * 60 * 60 * 4
+# fs = 200
 
 # root = "/data/netmit/wifall/ADetect/data"
 root = "/data/netmit/sleep_lab"
-datasets = ["ali_2"]
+datasets = ["bwh/v10", "mgh2/v9"]
 # datasets = ["shhs2_new", "shhs1_new", "mros1_new", "mros2_new", "wsc_new", "cfs"]
 
 fns_to_ignore = []
 
 for ds in datasets:
-    data_dir = os.path.join(root, ds, "thorax")
+    data_dir = os.path.join(root, ds, "chest")
 
     fns = sorted(os.listdir(data_dir))
 

@@ -9,31 +9,35 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from .preprocess import signal_crop, norm_sig, detect_motion_iterative
 from scipy.ndimage import zoom
-from .fns_to_ignore_less_than_4 import fns_to_ignore
+from .fns_to_ignore_bwh import fns_to_ignore
 from tqdm import tqdm
 import ast
 
 """
 N = 2067
 """
+# /data/netmit/sleep_lab/mgh2/v9/chest
 class BwhDataset(Dataset):
-    root = "/data/netmit/sleep_lab/ali_2"
-    processed_signal = f'{root}/bwh_encodec'
+    root = {"bwh_new": "/data/netmit/sleep_lab/bwh/v10",
+            "mgh_new": "/data/netmit/sleep_lab/mgh2/v9"}
+    # processed_signal = f'{root}/bwh_encodec'
     NumCv = 4
     modes = ['train', 'val', 'test']
+    
+    # /data/netmit/sleep_lab/bwh/v10/chest
         
     def __init__(self, dataset="bwh_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length=10 * 60 * 60 * 4):
         assert mode in ['train', 'val', 'test'], 'Only support train val or test mode'
         assert channels == {"thorax": 1.0}, "Only support thorax channel"
-        channels = {"thorax_clipped": 1.0}
+        channels = {"chest": 1.0}
 
         self.dataset = dataset
         self.mode = mode
         self.cv = cv
         self.channels = channels 
-        self.ds_dir = self.root
+        self.ds_dir = self.root[dataset]
         self.max_length = max_length
-        self.max_length_200 = max_length * 20
+        # self.max_length_200 = max_length * 20
 
         # dataset preparation (only select the intersection between all channels)
         file_list = set()
@@ -43,6 +47,7 @@ class BwhDataset(Dataset):
             file_list.update(file_list_after)
 
         file_list = sorted(file_list)
+        print(f'BWH len file_list: {len(file_list)}')
 
         # file_list = self.filter(file_list)
 
@@ -129,14 +134,14 @@ class BwhDataset(Dataset):
         return len(self.file_list)
     
     def process_signal(self, signal, fs):
-        assert fs == 200, f"fs is not 200 but {fs}"
+        assert fs == 10, f"fs is not 10 but {fs}"
         signal, _, _ = detect_motion_iterative(signal, fs)
         signal = signal_crop(signal)
         signal = norm_sig(signal)
 
-        if fs != 10:
-            signal = zoom(signal, 10/fs)
-            fs = 10
+        # if fs != 10:
+        #     signal = zoom(signal, 10/fs)
+        #     fs = 10
 
         return signal
 
@@ -145,10 +150,11 @@ class BwhDataset(Dataset):
 
         # now randomly select a channel, sampling based on their weights
         selected_channel = np.random.choice(list(self.channels.keys()), p=list(self.channels.values()))
-        if self.mode == "train":
-            filepath = os.path.join(self.processed_signal, filename)
-            breathing = np.load(filepath)['data'].squeeze()
-            fs = np.load(filepath)['fs']
+        filepath = os.path.join(self.ds_dir, selected_channel, filename)
+        breathing = np.load(filepath)['data'].squeeze()
+        fs = np.load(filepath)['fs']
+
+        if self.mode == "train" or self.mode == "test":
             breathing_length = breathing.shape[0] - self.max_length
             #randomly sample start index
             try:
@@ -162,22 +168,14 @@ class BwhDataset(Dataset):
             breathing = breathing[start_idx:start_idx+self.max_length]
             # assert fs == 10, "Sampling rate is not 10Hz"
         elif self.mode == "val":
-            filepath = os.path.join(self.ds_dir, selected_channel, filename)
-            breathing = np.load(filepath)['data'].squeeze()
-            fs = np.load(filepath)['fs']
-            assert fs == 200, "Sampling rate is not 200Hz"
-            breathing = breathing[:self.max_length_200]
-            breathing = self.process_signal(breathing, fs)
-        elif self.mode == "test":
-            filepath = os.path.join(self.ds_dir, selected_channel, filename)
-            # print(f'filepath: {filepath}')
-            breathing = np.load(filepath)['data'].squeeze()
-            fs = np.load(filepath)['fs']
-            assert fs == 200, "Sampling rate is not 200Hz"
-            breathing = self.process_signal(breathing, fs)
+            breathing = breathing[:self.max_length]
+        # elif self.mode == "test":
+        #     breathing = breathing
         else:
             raise ValueError(f"Invalid mode: {self.mode}")
-
+        
+        breathing = self.process_signal(breathing, fs)
+        
         breathing = torch.tensor(breathing, dtype=torch.float32)
         #randomly augment by multiplying by -1
         #flip to have everything be on same side

@@ -13,7 +13,7 @@ class BreathingDataset(Dataset):
     root = "/data/netmit/wifall/ADetect/data"
     NumCv = 4
     modes = ['train', 'val', 'test']
-    datasets = ['shhs2_new', 'shhs1_new', 'mros1_new', 'mros2_new', 'wsc_new', 'cfs', 'mgh_train_encodec', 'mesa_new', 'mgh_new', 'chat1', 'nchsdb']
+    datasets = ['shhs2_new', 'shhs1_new', 'mros1_new', 'mros2_new', 'wsc_new', 'cfs', 'mesa_new', 'chat1', 'nchsdb']
     channels = ['thorax', 'abdominal', 'rf']
         
     def __init__(self, dataset = "shhs2_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length = 10 * 60 * 60 * 4):
@@ -36,6 +36,7 @@ class BreathingDataset(Dataset):
             file_list.update(file_list_after)
 
         file_list = sorted(file_list)
+        print(f'{self.dataset} len file_list: {len(file_list)}')
 
         train_list, val_list = self.split_train_test(file_list)
 
@@ -45,8 +46,6 @@ class BreathingDataset(Dataset):
             self.file_list = val_list
         elif mode == "test": #All the files
             self.file_list = file_list
-        else:
-            raise ValueError(f"Invalid mode: {mode}")
 
     def split_train_test(self, file_list):
         train_files = []
@@ -83,30 +82,30 @@ class BreathingDataset(Dataset):
         breathing = np.load(filepath)['data'].squeeze()
         fs = np.load(filepath)['fs']
         # print(f'breathing shape: {breathing.shape}, fs: {fs}')
-        
-        if self.mode == "train":
+
+        breathing = self.process_signal(breathing, fs)
+
+        if self.mode == "train" or self.mode == "test":
             # assert fs == 10, "Sampling rate is not 10Hz"
-            if self.dataset != "mgh_train_encodec":
-                breathing_length = breathing.shape[0] - self.max_length
-                #randomly sample start index
-                try:
-                    start_idx = np.random.randint(0, breathing_length+1)
-                except:
-                    print("breathing_length is negative")
-                    print(f"breathing_length: {breathing_length}")
-                    print("filename: ", filename)
-                    print(f"dataset: {self.dataset}")
-                    sys.exit()
-                breathing = breathing[start_idx:start_idx+self.max_length]
+            breathing_length = breathing.shape[0] - self.max_length
+            #randomly sample start index
+            try:
+                start_idx = np.random.randint(0, breathing_length+1)
+            except:
+                print("breathing_length is negative")
+                print(f"breathing_length: {breathing_length}")
+                print("filename: ", filename)
+                print(f"dataset: {self.dataset}")
+                sys.exit()
+            breathing = breathing[start_idx:start_idx+self.max_length]
         elif self.mode == "val":
             breathing = breathing[:self.max_length]
-        elif self.mode == "test":
-            breathing = breathing
+        # elif self.mode == "test":
+        #     breathing = breathing
         else:
             raise ValueError(f"Invalid mode: {self.mode}")
         
-        if self.dataset != "mgh_train_encodec":
-            breathing = self.process_signal(breathing, fs)
+        # breathing = self.process_signal(breathing, fs)
 
         # breathing = breathing[:self.max_length] #4 hours
         breathing = torch.tensor(breathing, dtype=torch.float32)

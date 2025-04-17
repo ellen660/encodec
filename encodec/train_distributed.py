@@ -13,11 +13,42 @@ import yaml
 import random
 import numpy as np
 import time
+import matplotlib.pyplot as plt
+import math
 
 from clean_model import EncodecModel
 from data import init_dataset
 from losses import total_loss, disc_loss, Metrics, MetricsArgs, LinearWarmupCosineAnnealingLR, WarmupScheduler, ReconstructionLoss
 from torch.utils.tensorboard import SummaryWriter
+
+def ddp_reduce_dict(metrics: dict, ignore = []) -> dict:
+    """
+    Reduces a dictionary of scalar tensors across all processes (mean).
+    Returns a new dictionary with the same keys and averaged values.
+    """
+    world_size = dist.get_world_size()
+    reduced_metrics = {}
+
+    for key, value in metrics.items():
+        if not torch.is_tensor(value) or key in ignore:
+            continue  # skip non-tensor entries
+        dist.all_reduce(value, op=dist.ReduceOp.SUM)
+        value /= world_size
+        reduced_metrics[key] = value
+
+    return reduced_metrics
+
+def gather_codes(codes, world_size):
+    # Create a tensor list to gather codes from all ranks
+    gathered_codes = [torch.zeros_like(codes) for _ in range(world_size)]
+    
+    # Use all_gather to gather codes from all ranks
+    dist.all_gather(gathered_codes, codes)
+
+    # Concatenate all the gathered codes into one tensor
+    all_codes = torch.cat(gathered_codes, dim=0)
+    
+    return all_codes
 
 def setup(rank, world_size):
     """Initialize the distributed training environment."""
@@ -64,10 +95,10 @@ def init_model(config):
 def init_dataset_ddp(config):
     # Use a DistributedSampler
     train_dataset, val_dataset, train_mapping, val_mapping = init_dataset(config, ddp=True)
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True)
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.optimization.batch_size, sampler=train_sampler, num_workers=config.common.num_workers, pin_memory=True)
-    val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset)
-    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=config.optimization.batch_size, shuffle=False, sampler=val_sampler, num_workers=config.common.num_workers, pin_memory=True)
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, shuffle=True, drop_last=True)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.optimization.batch_size, sampler=train_sampler, num_workers=config.common.num_workers, pin_memory=False)
+    val_sampler = torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False, drop_last=True)
+    val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=config.optimization.batch_size, shuffle=False, sampler=val_sampler, num_workers=config.common.num_workers, pin_memory=False)
 
     return train_loader, val_loader, train_mapping, val_mapping
 
@@ -88,7 +119,7 @@ def train_one_step(metrics, epoch, optimizer, scheduler, model, train_loader, co
         warmup_scheduler (_type_): warmup learning rate
     """
     model.train()
-    epoch_loss = 0.0  # Store loss on the correct GPU
+    epoch_loss = 0.0 
     progress_bar = tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch") if dist.get_rank() == 0 else train_loader
 
     start_time = time.time()
@@ -107,10 +138,8 @@ def train_one_step(metrics, epoch, optimizer, scheduler, model, train_loader, co
         logits_real, logits_fake, fmap_real, fmap_fake = None, None, None, None
 
         commit_loss = torch.mean(commit_loss)
-        codebook_loss = torch.mean(codebook_loss)
-        #Reduce commit_loss and codebook_loss across all processes
         dist.all_reduce(commit_loss, op=dist.ReduceOp.SUM)
-        dist.all_reduce(codebook_loss, op=dist.ReduceOp.SUM)
+        commit_loss /= dist.get_world_size()  
 
         freq_loss_dict = freq_loss(x, x_hat)
         losses_g = total_loss(
@@ -121,6 +150,8 @@ def train_one_step(metrics, epoch, optimizer, scheduler, model, train_loader, co
                 x_hat, 
                 sample_rate=10,
             ) 
+        
+        
         loss = losses_g['l_1'] * config.loss.weight_l1 + freq_loss_dict["total_loss"] * config.loss.weight_freq + losses_g['l_2'] * config.loss.weight_l2
         if epoch >= config.loss.commit_start_epoch:
             loss += commit_loss * config.loss.weight_commit 
@@ -136,6 +167,12 @@ def train_one_step(metrics, epoch, optimizer, scheduler, model, train_loader, co
             dist.all_reduce(loss, op=dist.ReduceOp.SUM)  # Sum up the loss from all ranks
             loss /= dist.get_world_size()  # Divide by the world size to get the average loss
             epoch_loss += loss.item()
+            losses_g = ddp_reduce_dict(losses_g)
+            freq_loss_dict = ddp_reduce_dict(freq_loss_dict, ignore=["Sx_breathing_rate", "Sx_hat_breathing_rate", "S_x", "S_x_hat"])
+            max_gradient = torch.tensor(0.0).cuda()
+            for param in model.parameters():
+                if param.grad is not None:
+                    max_gradient = max(max_gradient, param.grad.abs().max().item())
 
             if dist.get_rank() == 0:
                 metrics.fill_metrics({
@@ -144,17 +181,11 @@ def train_one_step(metrics, epoch, optimizer, scheduler, model, train_loader, co
                     'Loss Frequency L1': freq_loss_dict["l1_loss"].item(),
                     'Frequency Accuracy': freq_loss_dict["acc"].item(),
                 }, epoch*len(train_loader) + i)
+
                 for j, d_id in enumerate(ds_id):
                     dataset_id = d_id.item()
                     metrics.fill_metrics({f'Loss L1 {label_mapping[dataset_id]}': losses_g['l_t'][j].item()}, epoch*len(train_loader) + i)
 
-            max_gradient = torch.tensor(0.0).cuda()
-            for param in model.parameters():
-                if param.grad is not None:
-                    max_gradient = max(max_gradient, param.grad.abs().max().item())
-
-            if dist.get_rank() == 0:
-                # log the max gradient
                 metrics.fill_metrics({
                     'Max Gradient': max_gradient
                 }, epoch*len(train_loader) + i)
@@ -173,6 +204,137 @@ def train_one_step(metrics, epoch, optimizer, scheduler, model, train_loader, co
 
         # log the metrics
         logger(writer, metrics_dict, 'train', epoch)
+        metrics.clear_metrics()
+
+@torch.no_grad()
+def test(metrics, epoch, model, val_loader, config, writer, freq_loss, label_mapping):
+    model.eval()
+    epoch_loss = 0.0
+    all_codes = []
+
+    progress_bar = tqdm(val_loader, desc=f"Validation Epoch {epoch}", unit="batch") if dist.get_rank() == 0 else val_loader
+
+    for i, (item, ds_id) in enumerate(progress_bar):
+        x = item["x"].cuda()
+        if x is None:
+            continue
+
+        x_hat, codes, commit_loss, codebook_loss = model(x)
+
+        logits_real, logits_fake, fmap_real, fmap_fake = None, None, None, None
+
+        commit_loss = torch.mean(commit_loss)
+        dist.all_reduce(commit_loss, op=dist.ReduceOp.SUM)
+        commit_loss /= dist.get_world_size()
+
+        freq_loss_dict = freq_loss(x, x_hat)
+        losses_g = total_loss(
+                fmap_real, 
+                logits_fake, 
+                fmap_fake, 
+                x, 
+                x_hat, 
+                sample_rate=10,
+            )
+
+        loss = losses_g['l_1'] * config.loss.weight_l1 + freq_loss_dict["total_loss"] * config.loss.weight_freq + losses_g['l_2'] * config.loss.weight_l2
+        if epoch >= config.loss.commit_start_epoch:
+            loss += commit_loss * config.loss.weight_commit 
+
+        dist.all_reduce(loss, op=dist.ReduceOp.SUM)  # Sum up the loss from all ranks
+        loss /= dist.get_world_size()  # Divide by the world size to get the average loss
+        epoch_loss += loss.item()
+        all_codes.append(codes)
+        losses_g = ddp_reduce_dict(losses_g)
+        freq_loss_dict = ddp_reduce_dict(freq_loss_dict, ignore=["Sx_breathing_rate", "Sx_hat_breathing_rate", "S_x", "S_x_hat"])
+
+        if dist.get_rank() == 0:
+            metrics.fill_metrics({
+                'Loss Frequency': freq_loss_dict["total_loss"].item(),
+                'Loss L1': losses_g['l_1'].item(),
+                'Loss commit_loss': commit_loss.item(),
+                'Loss Frequency L1': freq_loss_dict["l1_loss"].item(),
+                'Frequency Accuracy': freq_loss_dict["acc"].item(),
+            }, epoch*len(val_loader) + i)
+            for j, d_id in enumerate(ds_id):
+                dataset_id = d_id.item()
+                metrics.fill_metrics({f'Loss L1 {label_mapping[dataset_id]}': losses_g['l_t'][j].item()}, epoch*len(val_loader) + i)
+ 
+            # if i == 0:
+            #     S_x = freq_loss_dict["S_x"]
+            #     S_x_hat = freq_loss_dict["S_x_hat"]
+                
+            #     _, num_freq, _ = S_x.size()
+            #     S_x = S_x[:, :num_freq//2, :]
+            #     S_x_hat = S_x_hat[:, :num_freq//2, :]
+
+            #     # use this to set the scale of the spectrogram
+            #     min_spec_val = min(S_x.min(), S_x_hat.min())
+            #     max_spec_val = max(S_x.max(), S_x_hat.max())
+
+            #     time_start = 0
+            #     time_end = x.shape[-1]
+
+            #     x_time = np.arange(time_start, time_end, 1)
+
+            #     # plot x and the reconstructed x
+            #     fig, axs = plt.subplots(4, 1, figsize=(20, 10), sharex=True)
+
+            #     axs[0].plot(x_time, x[0].cpu().numpy().squeeze())
+            #     axs[0].set_title('Original')
+            #     axs[0].set_ylim(-6, 6)
+            #     axs[1].imshow(S_x.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, num_freq//2], vmin=min_spec_val, vmax=max_spec_val)
+            #     axs[1].invert_yaxis()
+            #     axs[1].set_title('Original Spectrogram')
+
+            #     axs[2].plot(x_time, x_hat[0].cpu().numpy().squeeze())
+            #     axs[2].set_title('Reconstructed')
+            #     axs[2].set_ylim(-6, 6)
+            #     axs[3].imshow(S_x_hat.detach().cpu().numpy()[0], cmap='jet', aspect='auto', extent=[time_start, time_end, 0, num_freq//2], vmin=min_spec_val, vmax=max_spec_val)
+            #     axs[3].invert_yaxis()
+            #     axs[3].set_title('Reconstructed Spectrogram')
+
+            #     fig.tight_layout()
+            #     fig.savefig(f'/data/scratch/ellen660/encodec/encodec/ablations/{config.exp_details.name}/{config.exp_details.description}/{epoch}.png')
+            #     plt.close(fig)
+
+    all_codes = torch.cat(all_codes, dim=0)  # B, num_codebooks, T
+    all_codes = gather_codes(all_codes, dist.get_world_size())
+
+    if dist.get_rank() == 0:
+        all_codes = torch.permute(all_codes, (1, 0, 2))
+
+        # flatten the last two dimensions
+        all_codes = all_codes.reshape(all_codes.shape[0], -1)
+
+        # log the distribution of codes. one distribution for each codebook
+        entropies = []
+        for i in range(all_codes.shape[0]):
+            writer.add_histogram(f'Codes/Codebook {i}', all_codes[i], epoch)
+            #calculate entropy
+            _, counts = torch.unique(all_codes[i], return_counts=True)
+            probabilities = counts.float() / counts.sum()
+            entropy = -(probabilities * probabilities.log2()).sum()
+            entropies.append(entropy.item())
+        #create a graph of entropy
+        fig, ax = plt.subplots()
+        x_axis = np.arange(0, len(entropies))
+        ax.plot(x_axis, entropies)
+        ax.set_title("Entropy of Codebooks")
+        ax.set_xlabel("Codebook index")
+        ax.set_ylabel("Entropy")
+        ax.set_ylim(0, math.log2(config.model.bins))
+        fig.tight_layout()
+        writer.add_figure(f"Entropy/{epoch}", fig)
+        plt.close(fig)
+
+        # loss_per_epoch = epoch_loss/len(val_loader)
+        # print(f"Epoch {epoch}, validation loss: {loss_per_epoch}")
+
+        # log the metrics
+        metrics_dict = metrics.compute_and_log_metrics()
+        # metrics_dict['Loss'] = loss_per_epoch
+        logger(writer, metrics_dict, 'val', epoch)
         metrics.clear_metrics()
 
 #Logger for tensorboard
@@ -216,10 +378,6 @@ def train(rank, world_size, config, log_dir):
     train_loader, val_loader, train_mapping, val_mapping = init_dataset_ddp(config)
     model = init_model(config)
     model.cuda()
-    optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), betas=(config.optimization.beta1, config.optimization.beta2))
-    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.optimization.warmup_epoch, max_epochs=config.common.max_epoch)
-    freq_loss = ReconstructionLoss(alpha=config.spectrogram_loss.alpha, bandwidth=config.spectrogram_loss.bandwidth, sampling_rate=10, n_fft=config.spectrogram_loss.n_fft, hop_length=config.spectrogram_loss.hop_length, win_length=config.spectrogram_loss.win_length, device=rank)
-
     model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
     # wrap the model by using DDP
     model = DDP(
@@ -228,7 +386,11 @@ def train(rank, world_size, config, log_dir):
         output_device=rank,
         broadcast_buffers=False,
         find_unused_parameters=False)
-
+    
+    optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), betas=(config.optimization.beta1, config.optimization.beta2))
+    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.optimization.warmup_epoch, max_epochs=config.common.max_epoch)
+    freq_loss = ReconstructionLoss(alpha=config.spectrogram_loss.alpha, bandwidth=config.spectrogram_loss.bandwidth, sampling_rate=10, n_fft=config.spectrogram_loss.n_fft, hop_length=config.spectrogram_loss.hop_length, win_length=config.spectrogram_loss.win_length, device=rank)
+    
     if rank == 0:
         writer = init_logger(rank, log_dir, resume=False)
     else:
@@ -236,10 +398,13 @@ def train(rank, world_size, config, log_dir):
     metrics_args = MetricsArgs(num_datasets=1, device=rank)
     metrics = Metrics(metrics_args)
 
-    for epoch in range(config.common.max_epoch):
+    for epoch in range(config.common.max_epoch + 1):
         train_loader.sampler.set_epoch(epoch) 
         train_one_step(metrics, epoch, optimizer, scheduler, model, train_loader, config=config, writer=writer, freq_loss=freq_loss, label_mapping=train_mapping)
-    # # test(metrics, 1, model, val_loader, config, writer, freq_loss=freq_loss, label_mapping=val_mapping)
+        if epoch % config.common.test_every == 0:
+            test(metrics, epoch, model, val_loader, config, writer, freq_loss=freq_loss, label_mapping=val_mapping)
+        if epoch % config.common.save_every == 1 and rank == 0:
+            save_checkpoint(model, optimizer, scheduler, epoch, os.path.join(log_dir, f"checkpoint_{epoch}.pth"))
 
     cleanup()
 
@@ -275,9 +440,9 @@ def set_seed(seed):
     Args:
         seed (int): seed number
     """
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    torch.manual_seed(seed) # for cpu
+    torch.cuda.manual_seed(seed) #for gpu
+    torch.cuda.manual_seed_all(seed) #for all gpus
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     np.random.seed(seed)
@@ -301,10 +466,9 @@ def start_dist_train(train_fn, world_size, config, dist_init_method=None):
     )  
 
 if __name__ == "__main__":
-    import faulthandler
-    faulthandler.enable()
     args = set_args()
-    log_dir = f'/data/scratch/ellen660/encodec/encodec/ablations/test_dist'
+    curr_time, curr_min = time.strftime("%Y-%m-%d_%H-%M", time.localtime()).split("_")
+    log_dir = f'/data/scratch/ellen660/encodec/encodec/ablations/{args.exp_name}/{curr_time}/{curr_min}'
     os.makedirs(log_dir, exist_ok=True)
     # Load the YAML file
     config = load_config("encodec/params/%s.yaml" % args.exp_name, log_dir)

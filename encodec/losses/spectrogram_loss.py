@@ -33,6 +33,8 @@ class BreathingSpectrogram(nn.Module):
         window = torch.hann_window(self.win_length, device=device).float()
         self.register_buffer("window", window)
         self.n_fft = n_fft
+        # print(f'n_fft {n_fft} win {self.win_length}, hop {self.hop_length}, sampl {sampling_rate}')
+        # sys.exit()
         # win_length = n_fft
         # self.hop_length = n_fft // 4
         # self.win_length = win_length # 256

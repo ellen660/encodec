@@ -1,24 +1,20 @@
 from clean_model import EncodecModel
-from data import init_dataset
+from ppg import init_dataset
 from losses import total_loss, disc_loss, Metrics, MetricsArgs, LinearWarmupCosineAnnealingLR, WarmupScheduler, ReconstructionLoss
 from msstftd import MultiScaleSTFTDiscriminator
 
 import torch
 import torch.optim as optim
 import torch.nn as nn
-from torch.utils.data import DataLoader, Subset
 from torch.utils.tensorboard import SummaryWriter
 import os
 from datetime import datetime
 import yaml
 import random
-from collections import defaultdict
 from tqdm import tqdm
 import argparse
 import matplotlib.pyplot as plt
 import numpy as np
-import sys
-import socket
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import math
@@ -425,7 +421,7 @@ def load_disc(disc, disc_optimizer, disc_scheduler, path, device):
 def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp_name", type=str, default="091224_l1")
-    parser.add_argument("--resume_from", type=str, default=None)
+    parser.add_argument("--resume_from", type=str, default="")
     parser.add_argument("--log_dir", type=str, default=None)
     return parser.parse_args()
 
@@ -482,7 +478,7 @@ if __name__ == "__main__":
     model = model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=float(config.optimization.lr), betas=(config.optimization.beta1, config.optimization.beta2))
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=config.optimization.warmup_epoch, max_epochs=config.common.max_epoch)
-    freq_loss = ReconstructionLoss(alpha=config.spectrogram_loss.alpha, bandwidth=config.spectrogram_loss.bandwidth, sampling_rate=10, n_fft=config.spectrogram_loss.n_fft, hop_length=config.spectrogram_loss.hop_length, win_length=config.spectrogram_loss.win_length, device=device)
+    freq_loss = ReconstructionLoss(alpha=config.spectrogram_loss.alpha, bandwidth=config.spectrogram_loss.bandwidth, sampling_rate=config.model.sample_rate, n_fft=config.spectrogram_loss.n_fft, hop_length=config.spectrogram_loss.hop_length, win_length=config.spectrogram_loss.win_length, device=device)
 
     if config.discrim.train_discriminator:
         disc = disc.to(device)

@@ -78,6 +78,3 @@ discrim:
     - 1024
     - 1024
   filters: 32
-distributed:
-  data_parallel: true
-  world_size: 8

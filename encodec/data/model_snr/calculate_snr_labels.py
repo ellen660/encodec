@@ -6,6 +6,8 @@ from encodec.data.all_datasets import MergedDataset
 from torch.utils.data import DataLoader 
 import os
 from tqdm import tqdm
+import sys
+import torch
 
 class DeepSNRPredictor:
     BATCH_SIZE = 256
@@ -92,10 +94,13 @@ def as_sliding_window(array, window_size, stride):
 
 if __name__ == '__main__':
     root = "/data/netmit/sleep_lab/ali_2/bwh_encodec"
-    save_dir = "/data/netmit/sleep_lab/ali_2/encodec_snr"
+    save_dir = "/data/netmit/sleep_lab/ali_2/bwh_v10_deepsnr_labels"
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
     done = [f for f in os.listdir(save_dir) if f.endswith(".npy")]
     done = [f.replace(".npy", ".npz") for f in done]
-    breakpoint()
+    # breakpoint()
     data = BwhDataset(dataset = "bwh_new", mode = "test", cv = 0, channels = {"thorax": 1.0}, max_length = 10*60*60*4)
     dataset = DataLoader(data, batch_size=1, shuffle=False, num_workers=10)
     print(f'size dataset: {len(dataset)}')
@@ -105,17 +110,35 @@ if __name__ == '__main__':
     deepsnr_predictor = DeepSNRPredictor() 
     seg_len = deepsnr_predictor.model.SignalDuration
     for i, item in enumerate(tqdm(dataset)):
-        breathing = item["x"].squeeze(0).squeeze(0).numpy()
+        breathing = item["x"].squeeze(0).squeeze(0).numpy() # T 
+        # print(f'breathing shape: {breathing.shape}')
+        #take every two 
+        breathing = breathing[::2]
+        # print(f'breathing shape: {breathing.shape}')
+        #make tensor
+        # breathing = torch.tensor(breathing, dtype=torch.float32).unsqueeze(0) # (1, T)
+        breathing = breathing.reshape(-1, 600)
+        deepsnr = deepsnr_predictor.predict(breathing)
+        # print(f'deepsnr shape: {deepsnr.shape}')
+        # print(f'deepsnr: {deepsnr}')
+        # sys.exit()
+        #one label every 2 minutes 
+
         filename = item["filename"][0]
-        print(f'breathing shape: {breathing.shape}, filename: {filename}')
+        # print(f'breathing shape: {breathing.shape}, filename: {filename}')
         if filename in done:
             continue
 
-        signal_pad = np.pad(breathing, [[seg_len // 2, seg_len // 2 - 1]], mode="reflect")
-        signal_reshaped = as_sliding_window(signal_pad, seg_len, STEP_SIZE)
-        deepsnr = deepsnr_predictor.predict_batch(signal_reshaped)
-        #save deepsnr to file
+        # signal_pad = np.pad(breathing, [[seg_len // 2, seg_len // 2 - 1]], mode="reflect")
+        # signal_reshaped = as_sliding_window(signal_pad, seg_len, STEP_SIZE) #T // 8, 600
+        # signal_reshaped = signal_reshaped.unsqueeze(0)
+        # print(f'signal shape after reshape: {signal_reshaped.shape}')
+        # deepsnr = deepsnr_predictor(signal_reshaped)
+        # #save deepsnr to file
         save_path = os.path.join(save_dir, filename.replace(".npz", ".npy"))
         np.save(save_path, deepsnr)
         print(f'save_path: {save_path}')
         # breakpoint()
+
+        # downsamples by 60 -> one label every 60 seconds 
+        # 2min is 10 * 60 * 2 = 1200 samples
