@@ -30,9 +30,14 @@ fns = sorted(os.listdir(root))
 
 for fn in tqdm(fns):
     filepath = os.path.join(root, fn)
-    ppg = np.load(filepath)['data']
-    fs = np.load(filepath)['fs']
-    assert fs == 100
+    try:
+        ppg = np.load(filepath)['data']
+        fs = np.load(filepath)['fs']
+        assert fs == 100
+    except:
+        fns_to_ignore.append(fn)
+        print(f'bad file {fn}')
+        continue
     if ppg.shape[0] <= max_length:
         fns_to_ignore.append(fn)
         print(f"ignoring {fn} because shape is {ppg.shape}")

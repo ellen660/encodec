@@ -3,6 +3,7 @@ import sys
 import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
+from .fns_to_ignore_bwh import fns_to_ignore
 
 """
 N = 4057
@@ -22,9 +23,10 @@ class BwhPpgDataset(Dataset):
         self.max_length = max_length
 
         # dataset preparation (only select the intersection between all channels)
-        file_list = [f for f in os.listdir(self.ds_dir) if f.endswith('.npz')]
+        file_list = [f for f in os.listdir(self.ds_dir) if f.endswith('.npz') and f not in fns_to_ignore]
         file_list = sorted(file_list)
         print(f'PPG BWH size : {len(file_list)}')
+        # breakpoint()
 
         train_list, val_list = self.split_train_test(file_list)
             
