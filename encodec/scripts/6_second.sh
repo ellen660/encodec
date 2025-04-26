@@ -1,11 +1,14 @@
 #!/bin/bash
 
+trap 'python encodec/notify_failure.py' ERR
+set -e
+
 # Path to the YAML file
 yaml_file="no_discrim"
 path="/data/scratch/ellen660/encodec/encodec/params/$yaml_file.yaml"
-export CUDA_VISIBLE_DEVICES=4,5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,4,5,6,7
 run_name="6_seconds_6_codebooks"
-resume_from="/data/scratch/ellen660/encodec/encodec/ablations/no_discrim/6_seconds_6_codebooks/20250402/test"
+resume_from=""
 
 # Set PATH_TO_USE based on whether RESUME_PATH is empty or not
 if [ -n "$resume_from" ]; then

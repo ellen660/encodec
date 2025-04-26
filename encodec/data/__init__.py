@@ -2,13 +2,13 @@ from .all_datasets import MergedDataset
 from .dataset import BreathingDataset
 from .bwh import BwhDataset
 from torch.utils.data import DataLoader
-import torch
+from tqdm import tqdm
 
 def init_dataset(config, ddp=False):
     cv = config.dataset.cv
     max_length = config.dataset.max_length
     weights = {
-        "mgh_train_encodec": config.dataset.mgh,
+        "mgh_new": config.dataset.mgh,
         "shhs2_new": config.dataset.shhs2,
         "shhs1_new": config.dataset.shhs1,
         "mros1_new": config.dataset.mros1,
@@ -22,7 +22,7 @@ def init_dataset(config, ddp=False):
     channels = {'thorax': config.dataset.thorax, 'abdominal': config.dataset.abdominal}
     for ds_name, weight in weights.items():
         if weight > 0:
-            if ds_name == "bwh_new":
+            if ds_name == "bwh_new" or ds_name == "mgh_new":
                 train_datasets.append(BwhDataset(dataset = ds_name, mode = "train", cv = cv, channels = {"thorax": 1.0}, max_length = max_length))
                 val_datasets.append(BwhDataset(dataset = ds_name, mode = "val", cv = cv, channels = {"thorax": 1.0}, max_length = max_length))
             else:
@@ -45,6 +45,21 @@ def init_dataset(config, ddp=False):
         val_loader = DataLoader(val_dataset, batch_size=config.optimization.batch_size, shuffle=False, num_workers=config.common.num_workers)
 
         print(f'Merged dataset size: {len(train_dataset)}')
+        # test = DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=1)
+        # for i, (item, ds_id) in enumerate(tqdm(test, desc=f"Training Epoch", unit="batch")):
+        #     try:
+        #         # print(i)
+        #         pass
+        #     except:
+        #         print(f'bad file {item["filename"][0]}')
+        # test = DataLoader(val_dataset, batch_size=1, shuffle=True, num_workers=1)
+        # for i, (item, ds_id) in enumerate(tqdm(test, desc=f"Training Epoch", unit="batch")):
+        #     try:
+        #         # print(i)
+        #         pass
+        #     except:
+        #         print(f'bad file {item["filename"][0]}')
+        # breakpoint()
         return train_loader, val_loader, train_dataset.mapping, val_dataset.mapping
     else:
         return train_dataset, val_dataset, train_dataset.mapping, val_dataset.mapping

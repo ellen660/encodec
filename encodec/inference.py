@@ -74,9 +74,9 @@ def init_dataset(config, mode="test"):
     abdominal_channels = {"abdominal": 1.}
     rf_channels = {"rf": 1.}
 
-    datasets["mgh"]={"thorax":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                     "abdominal":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length)),
-                     "rf":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = rf_channels, max_length = max_length))
+    datasets["mgh"]={"thorax":(BwhDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
+                    #  "abdominal":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length)),
+                    #  "rf":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = rf_channels, max_length = max_length))
                     }
     datasets["shhs2"] = {
                     "thorax":(BreathingDataset(dataset = "shhs2_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
@@ -262,11 +262,12 @@ def plot_most_frequent_signals(ds_name, pivot, model, save_dir, config, device):
 def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--user_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/ablations")
-    parser.add_argument("--save_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/predictions")
-    parser.add_argument("--model_dir", type=str, default="no_discrim/45_seconds/20250331/ max_epoch=200 debug=false bins=512 discrim=false batch_size=12 lr=1e-4")
+    parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes/predictions")
+    parser.add_argument("--model_dir", type=str, default="bwh_mgh/6_seconds_6_codebooks/20250420/test")
+    # parser.add_argument("--model_dir", type=str, default="no_discrim/6_seconds_6_codebooks/20250402/test")
     parser.add_argument("--datasets", type=List[str], default=["shhs2"])
     parser.add_argument("--resume", type=bool, default=True)
-    parser.add_argument("--do_channel", type=List[str], default=["thorax", "abdominal"])
+    parser.add_argument("--do_channel", type=List[str], default=["thorax"])
     #    # datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
     return parser.parse_args()
 

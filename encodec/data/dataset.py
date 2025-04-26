@@ -13,7 +13,7 @@ class BreathingDataset(Dataset):
     root = "/data/netmit/wifall/ADetect/data"
     NumCv = 4
     modes = ['train', 'val', 'test']
-    datasets = ['shhs2_new', 'shhs1_new', 'mros1_new', 'mros2_new', 'wsc_new', 'cfs', 'mgh_train_encodec', 'mesa_new', 'mgh_new', 'chat1', 'nchsdb']
+    datasets = ['shhs2_new', 'shhs1_new', 'mros1_new', 'mros2_new', 'wsc_new', 'cfs', 'mesa_new', 'chat1', 'nchsdb']
     channels = ['thorax', 'abdominal', 'rf']
         
     def __init__(self, dataset = "shhs2_new", mode = "train", cv = 0, channels = {"thorax": 1.0}, max_length = 10 * 60 * 60 * 4):
@@ -86,18 +86,17 @@ class BreathingDataset(Dataset):
         
         if self.mode == "train":
             # assert fs == 10, "Sampling rate is not 10Hz"
-            if self.dataset != "mgh_train_encodec":
-                breathing_length = breathing.shape[0] - self.max_length
-                #randomly sample start index
-                try:
-                    start_idx = np.random.randint(0, breathing_length+1)
-                except:
-                    print("breathing_length is negative")
-                    print(f"breathing_length: {breathing_length}")
-                    print("filename: ", filename)
-                    print(f"dataset: {self.dataset}")
-                    sys.exit()
-                breathing = breathing[start_idx:start_idx+self.max_length]
+            breathing_length = breathing.shape[0] - self.max_length
+            #randomly sample start index
+            try:
+                start_idx = np.random.randint(0, breathing_length+1)
+            except:
+                print("breathing_length is negative")
+                print(f"breathing_length: {breathing_length}")
+                print("filename: ", filename)
+                print(f"dataset: {self.dataset}")
+                sys.exit()
+            breathing = breathing[start_idx:start_idx+self.max_length]
         elif self.mode == "val":
             breathing = breathing[:self.max_length]
         elif self.mode == "test":
@@ -105,8 +104,7 @@ class BreathingDataset(Dataset):
         else:
             raise ValueError(f"Invalid mode: {self.mode}")
         
-        if self.dataset != "mgh_train_encodec":
-            breathing = self.process_signal(breathing, fs)
+        breathing = self.process_signal(breathing, fs)
 
         # breathing = breathing[:self.max_length] #4 hours
         breathing = torch.tensor(breathing, dtype=torch.float32)

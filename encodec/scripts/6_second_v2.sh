@@ -1,5 +1,8 @@
 #!/bin/bash
 
+trap 'python encodec/notify_failure.py' ERR
+set -e
+
 # Path to the YAML file
 yaml_file="no_discrim"
 path="/data/scratch/ellen660/encodec/encodec/params/$yaml_file.yaml"
