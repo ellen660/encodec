@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from typing import List
 from scipy.spatial.distance import jensenshannon
+from ppg import BwhPpgDataset
 
 class ConfigNamespace:
     """Converts a dictionary into an object-like namespace for easy attribute access."""
@@ -62,7 +63,7 @@ def init_model(config):
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model Total number of parameters: {total_params}")
     # total_params = sum(p.numel() for p in disc_model.parameters())
-    print(f"Discriminator Total number of parameters: {total_params}")
+    # print(f"Discriminator Total number of parameters: {total_params}")
     return model
 
 def init_dataset(config, mode="test"):
@@ -70,57 +71,12 @@ def init_dataset(config, mode="test"):
     max_length = config.dataset.max_length
 
     datasets = {}
-    # selected channels
-    thorax_channels = {"thorax": 1.} #Hard code for now
-    abdominal_channels = {"abdominal": 1.}
-    rf_channels = {"rf": 1.}
 
-    datasets["mgh"]={"thorax":(BwhDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    #  "abdominal":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length)),
-                    #  "rf":(BreathingDataset(dataset = "mgh_new", mode = mode, cv = cv, channels = rf_channels, max_length = max_length))
-                    }
-    datasets["shhs2"] = {
-                    "thorax":(BreathingDataset(dataset = "shhs2_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "shhs2_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }
-    datasets["shhs1"]={
-                    "thorax":(BreathingDataset(dataset = "shhs1_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "shhs1_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }
-    datasets["mros1"]={
-                    "thorax":(BreathingDataset(dataset = "mros1_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "mros1_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }
-    datasets["mros2"]={
-                    "thorax":(BreathingDataset(dataset = "mros2_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "mros2_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }
-    datasets["wsc"]={
-                    "thorax":(BreathingDataset(dataset = "wsc_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "wsc_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }
-    datasets["cfs"]={
-                    "thorax":(BreathingDataset(dataset = "cfs", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "cfs", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }
-    datasets["bwh"]={
-                    "thorax":(BwhDataset(dataset = "bwh_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    }
-    datasets["mesa"]={
-                    "thorax":(BreathingDataset(dataset = "mesa_new", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "mesa_new", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }
-    datasets["chat1"]={
-                    "thorax":(BreathingDataset(dataset = "chat1", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "chat1", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }
-    datasets["nchsdb"]={
-                    "thorax":(BreathingDataset(dataset = "nchsdb", mode = mode, cv = cv, channels = thorax_channels, max_length = max_length)),
-                    "abdominal":(BreathingDataset(dataset = "nchsdb", mode = mode, cv = cv, channels = abdominal_channels, max_length = max_length))
-                    }    
+    datasets["bwh"] = BwhPpgDataset(dataset = "bwh_new", mode = mode, cv = cv, max_length = max_length)
+                    
     return datasets
 
-def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done, channel):
+def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done):
     """
     Process a single dataset on the specified GPU.
     """
@@ -130,18 +86,21 @@ def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done, 
     for item in tqdm(test_loader, desc=f"Processing {ds_name}"):
         x = item["x"].to(device)
         filename = item["filename"][0]
-        x_hat, codes, _, _, = model(x)
-        l1 += torch.nn.L1Loss(reduction='mean')(x, x_hat).item()
-        count += 1
+        print(f'filename: {filename} x shape: {x.shape}')
+        _, codes, _, _, = model(x)
+        # print(f'x.shape: {x.shape}')
+        # l1 += torch.nn.L1Loss(reduction='mean')(x, x_hat).item()
+        # count += 1
+        # breakpoint()
 
         # Save the prediction
         # np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename), data=x_hat, fs=10)
 
         # Save the codes
-        save_path = os.path.join(save_dir, ds_name, channel, filename)
+        save_path = os.path.join(save_dir, ds_name, filename)
         # os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        np.savez(save_path, data=codes.squeeze().cpu().detach().numpy(), fs=10/compression_ratio)
-    print(f"Finished processing {ds_name} for channel {channel}")
+        np.savez(save_path, data=codes.squeeze().cpu().detach().numpy(), fs=100/compression_ratio)
+    print(f"Finished processing {ds_name}")
     return l1 / count if count != 0 else None
 
 def get_code_distribution(channel, ds_name, train_ds, save_dir, model, bins):
@@ -413,15 +372,15 @@ def get_codebook(model):
 def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--user_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/ablations")
-    parser.add_argument("--save_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/visualizations")
-    parser.add_argument("--model_dir", type=str, default="no_discrim/6_seconds_8_codebooks/20250331/ max_epoch=200 debug=false bins=512 discrim=false batch_size=12 lr=1e-4")
-    parser.add_argument("--datasets", type=List[str], default=["bwh", "mgh", "shhs2", "wsc"])
+    parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes")
+    parser.add_argument("--model_dir", type=str, default="ppg/6_seconds_6_codebooks/20250418-1215/ max_epoch=400 bins=1024 batch_size=12 lr=1e-4")
+    parser.add_argument("--datasets", type=List[str], default=["bwh"])
     # parser.add_argument("--datasets", type=List[str], default=["cfs", "mesa", "chat1", "shhs1", "shhs2", "mros1", "mros2", "wsc",])
     parser.add_argument("--resume", type=bool, default=True)
     # parser.add_argument("--do_channel", type=List[str], default=["thorax", "abdominal"])
-    parser.add_argument("--do_channel", type=List[str], default=["thorax"])
-    parser.add_argument("--do_code_generation", type=bool, default=False)
-    parser.add_argument("--do_token_distribution", type=bool, default=True)
+    parser.add_argument("--do_channel", type=List[str], default=["ppg"])
+    parser.add_argument("--do_code_generation", type=bool, default=True)
+    parser.add_argument("--do_token_distribution", type=bool, default=False)
     #    # datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
     return parser.parse_args()
 
@@ -441,8 +400,8 @@ if __name__ == "__main__":
     # Initialize directories
     os.makedirs(save_dir, exist_ok=True)
     for ds_name in datasets:
-        for channel in do_channel:
-            os.makedirs(os.path.join(save_dir, ds_name, channel), exist_ok=True)
+        # for channel in do_channel:
+        os.makedirs(os.path.join(save_dir, ds_name), exist_ok=True)
 
     #Initialize the model
     model = init_model(config)
@@ -463,18 +422,18 @@ if __name__ == "__main__":
     #Code Generation
     if args.do_code_generation:
         test_datasets = init_dataset(config, mode="test")
-        for channel in do_channel:
-            for ds_name in datasets:
-                try:
-                    test_ds = test_datasets[ds_name][channel]
-                except:
-                    print(f'channel {channel} not found in dataset {ds_name}')
-                    break
-                done = set()
-                if resume:
-                    done = set([f for f in os.listdir(os.path.join(save_dir, ds_name, channel)) if f.endswith('.npz')])
-                l1 = process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done=done, channel=channel)
-                print(f'l1 for {ds_name} channel {channel}: {l1}')
+        # for channel in do_channel:
+        for ds_name in datasets:
+            try:
+                test_ds = test_datasets[ds_name]
+            except:
+                print(f'ds {ds_name} not found')
+                break
+            done = set()
+            if resume:
+                done = set([f for f in os.listdir(os.path.join(save_dir, ds_name)) if f.endswith('.npz')])
+            l1 = process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done=done)
+            print(f'l1 for {ds_name}: {l1}')
 
     #Token Distribution
     if args.do_token_distribution:

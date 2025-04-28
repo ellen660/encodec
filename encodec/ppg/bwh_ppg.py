@@ -13,7 +13,7 @@ class BwhPpgDataset(Dataset):
     NumCv = 4
     modes = ['train', 'val', 'test']
             
-    def __init__(self, dataset="bwh_new", mode = "train", cv = 0, max_length = 10 * 60 * 60 * 4):
+    def __init__(self, dataset="bwh_new", mode = "train", cv = 0, max_length = 100 * 60 * 60 * 4):
         assert mode in ['train', 'val', 'test'], 'Only support train val or test mode'
 
         self.dataset = dataset
@@ -75,7 +75,7 @@ class BwhPpgDataset(Dataset):
         fs = np.load(filepath)['fs']
         assert fs == 100, f"fs is not 100 but {fs}"
 
-        if self.mode == "train" or self.mode == "test":
+        if self.mode == "train":
             ppg_length = ppg.shape[0] - self.max_length
             #randomly sample start index
             try:
@@ -91,6 +91,8 @@ class BwhPpgDataset(Dataset):
             ppg = ppg[start_idx:start_idx+self.max_length]
         elif self.mode == "val":
             ppg = ppg[:self.max_length]
+        elif self.mode == "test":
+            ppg = ppg[:3600000]
 
         ppg = self.process_signal(ppg, fs)
                 
