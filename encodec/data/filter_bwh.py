@@ -3,7 +3,6 @@ import numpy as np
 import json
 from tqdm import tqdm
 import time
-from scipy.ndimage import zoom
 import csv
 import matplotlib.pyplot as plt
 import pandas as pd
