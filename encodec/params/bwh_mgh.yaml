@@ -1,25 +1,25 @@
 exp_details:
   name: bwh_mgh
-  description: 6_seconds_6_codebooks
+  description: 30_seconds
 common:
   log_every: 5
   save_every: 50
   test_every: 25
   max_epoch: 400
   seed: 42
-  gradient_clipping: true
+  gradient_clipping: false
   gradient_clipping_value: 0.1
   num_workers: 10
   debug: false
 optimization:
   lr: 0.0001
-  batch_size: 12
+  batch_size: 16
   beta1: 0.8
   beta2: 0.9
   warmup_epoch: 10
 dataset:
   max_length: 144000
-  external: true
+  external: shhs2_new
   cv: 0
   mgh: 1
   shhs1: 0
@@ -48,14 +48,14 @@ spectrogram_loss:
 model:
   ratios:
     - 5
+    - 5
     - 3
     - 2
     - 2
-    - 1
-  bins: 1024
+  bins: 512
   dimension: 256
   target_bandwidths:
-    - 0.06
+    - 0.32
   audio_normalize: false
   causal: true
   norm: layer_norm

@@ -263,9 +263,10 @@ def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--user_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/ablations")
     parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes/predictions")
-    parser.add_argument("--model_dir", type=str, default="bwh_mgh/6_seconds_6_codebooks/20250420/test")
+    # parser.add_argument("--model_dir", type=str, default="bwh_mgh/6_seconds_6_codebooks/20250420/test")
+    parser.add_argument("--model_dir", type=str, default="bwh_mgh/30_seconds/20250501/ max_epoch=400 bins=512 batch_size=16 lr=1e-4")    
     # parser.add_argument("--model_dir", type=str, default="no_discrim/6_seconds_6_codebooks/20250402/test")
-    parser.add_argument("--datasets", type=List[str], default=["shhs2"])
+    parser.add_argument("--datasets", type=List[str], default=["bwh"])
     parser.add_argument("--resume", type=bool, default=True)
     parser.add_argument("--do_channel", type=List[str], default=["thorax"])
     #    # datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]

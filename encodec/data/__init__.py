@@ -32,7 +32,7 @@ def init_dataset(config, ddp=False):
             val_weight.append(float(weight))
 
     #Holdout/external dataset
-    val_datasets.append(BreathingDataset(dataset = "mesa_new", mode = "val", cv = cv, channels = channels, max_length = max_length))
+    val_datasets.append(BreathingDataset(dataset = config.dataset.external, mode = "val", cv = cv, channels = channels, max_length = max_length))
     val_weight.append(1.)
 
     print("Number of training datasets: ", len(train_datasets))

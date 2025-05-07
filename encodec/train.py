@@ -102,6 +102,8 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             optimizer_disc.zero_grad()
             loss_disc.backward() 
             if config.common.gradient_clipping:
+                print(f'clip gradient')
+                sys.exit()
                 nn.utils.clip_grad_norm_(disc.parameters(), config.common.gradient_clipping_value)
             optimizer_disc.step()
 
@@ -375,11 +377,11 @@ def init_model(config):
     # print(disc_model)
     # breakpoint()
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
-    print(f"disc model train mode :{disc_model.training}")
+    # print(f"disc model train mode :{disc_model.training}")
     total_params = sum(p.numel() for p in model.parameters())
     print(f"Model Total number of parameters: {total_params}")
-    total_params = sum(p.numel() for p in disc_model.parameters())
-    print(f"Discriminator Total number of parameters: {total_params}")
+    # total_params = sum(p.numel() for p in disc_model.parameters())
+    # print(f"Discriminator Total number of parameters: {total_params}")
     # print(f"model {model}")
     # breakpoint()
     return model, disc_model

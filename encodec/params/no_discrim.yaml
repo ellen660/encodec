@@ -19,7 +19,7 @@ optimization:
   warmup_epoch: 10
 dataset:
   max_length: 144000
-  external: true
+  external: mesa_new
   cv: 0
   mgh: 0
   shhs1: 1

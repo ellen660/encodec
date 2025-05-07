@@ -39,6 +39,7 @@ for lr in "${lr_list[@]}"; do
 
     yq -yi ".model.ratios = [5, 3, 2, 2, 1]" "$path"
     yq -yi ".model.target_bandwidths = [0.06]" "$path"
+    yq -yi ".model.bins = 1024" "$path"
     yq -yi '.exp_details.description = "6_seconds_6_codebooks"' "$path"
 
     # Replace parameters in the YAML file using yq
