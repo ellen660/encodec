@@ -58,13 +58,13 @@ class BwhPpgDataset(Dataset):
             return signal
 
         def norm_sig(input_sig):
+            # print(f'mean {np.mean(input_sig)} std {np.std(input_sig)}')
             return (input_sig - np.mean(input_sig)) / np.std(input_sig)
         
         signal = signal_crop(signal)
         signal = norm_sig(signal)
 
         return signal
-    
 
     def __getitem__(self, idx):
         filename = self.file_list[idx]
