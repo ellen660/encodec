@@ -468,7 +468,7 @@ if __name__ == "__main__":
 
     #Token Distribution
     if args.do_token_distribution:
-        # get_codebook(model)
+        get_codebook(model)
         test_datasets = init_dataset(config, mode="test")
         # breakpoint()
         num_codebooks = 6
