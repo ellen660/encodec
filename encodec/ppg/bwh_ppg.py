@@ -12,6 +12,7 @@ class BwhPpgDataset(Dataset):
     root = {"bwh_new": "/data/netmit/sleep_lab/sandbox/ppg/bwh"}
     NumCv = 4
     modes = ['train', 'val', 'test']
+    MAX_TEST_LENGTH = 100 * 60 * 60 * 10 # 10 hours at 100 Hz
             
     def __init__(self, dataset="bwh_new", mode = "train", cv = 0, max_length = 100 * 60 * 60 * 4):
         assert mode in ['train', 'val', 'test'], 'Only support train val or test mode'
@@ -92,7 +93,7 @@ class BwhPpgDataset(Dataset):
         elif self.mode == "val":
             ppg = ppg[:self.max_length]
         elif self.mode == "test":
-            ppg = ppg[:3600000]
+            ppg = ppg[:self.MAX_TEST_LENGTH]
 
         ppg = self.process_signal(ppg, fs)
                 
