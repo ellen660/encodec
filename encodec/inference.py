@@ -143,134 +143,232 @@ def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done, 
     print(f"Finished processing {ds_name} for channel {channel}")
     return l1 / count if count != 0 else None
 
-def get_code_distribution(channel, ds_name, test_ds, save_dir, bins, pivot=None):
-    all_codes = []
-    for filename in tqdm(test_ds.file_list):
-        codes = np.load(os.path.join(save_dir, ds_name, channel, filename))['data'] #32 by ?
-        all_codes.append(codes)
-    num_codebooks = all_codes[0].shape[0]
-    histogram_bins = bins
-
-    # Prepare to aggregate data for each feature
-    feature_counts = np.zeros((num_codebooks, histogram_bins), dtype=int)
-
-    # Aggregate counts for each feature
-    for sample in all_codes:
-        for codebook_idx in range(num_codebooks):
-            feature_data = sample[codebook_idx] #T
-            assert sample[codebook_idx].min() >= 0, "min 0"
-            assert sample[codebook_idx].max() < bins, f"max {sample[codebook_idx].max()}"
-            counts, _ = np.histogram(feature_data, bins=histogram_bins, range=(0, histogram_bins - 1))
-            feature_counts[codebook_idx] += counts
+def get_codebook(model):
+    codebook = model.codebooks[0].cpu().detach().numpy()
     
-    if pivot is None:
-        #sort by highest to lowest frequency 
-        pivot = {}
-        for codebook_idx in range(num_codebooks):
-            sorted_indices_desc = np.argsort(feature_counts[codebook_idx])[::-1] #highest to lowest
-            pivot[codebook_idx] = sorted_indices_desc
-            assert np.array_equal(feature_counts[codebook_idx][sorted_indices_desc],sorted(feature_counts[codebook_idx], reverse=True))
-        most_common = {}
-        for codebook_idx in range(num_codebooks):
-            # feature_counts[codebook_idx] = feature_counts[codebook_idx][pivot[codebook_idx]]
-            most_common[codebook_idx] = {i: {"idx": pivot[codebook_idx][i],
-                                             "count": feature_counts[codebook_idx][pivot[codebook_idx][i]], 
-                                             "frequency": feature_counts[codebook_idx][pivot[codebook_idx][i]]/feature_counts[codebook_idx].sum()}
-                                            for i in range(5)} #5 most common
-        return pivot, most_common
-    else:
-        for codebook_idx in range(num_codebooks):
-            feature_counts[codebook_idx] = feature_counts[codebook_idx][pivot[codebook_idx]]
+    def euclidean_distance(a, b): #magnitude and direction
+        return np.linalg.norm(a - b)
+
+    def cosine_similarity(a, b): #direction only
+        return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
+    
+    min_euclidean, token1, token2 = np.inf, None, None
+    max_cosine, one, two = -np.inf, None, None
+    
+    for i in range(codebook.shape[0]-1):
+        for j in range(i+1, codebook.shape[0]):
+            dist = euclidean_distance(codebook[i], codebook[j])
+            cos_sim = cosine_similarity(codebook[i], codebook[j])
+            if dist < min_euclidean:
+                min_euclidean = dist
+                token1, token2 = i, j
+            if cos_sim > max_cosine:
+                max_cosine = cos_sim
+                one, two = i, j
+    print(f"Minimum Euclidean distance: {min_euclidean} between tokens {token1} and {token2}")
+    print(f"Maximum Cosine similarity: {max_cosine} between tokens {one} and {two}")
+    min_mean, min_std = np.inf, np.inf
+    mean_token, std_token = None, None
+    max_std = -np.inf
+    for i in range(codebook.shape[0]):
+        mean, std = np.mean(codebook[i]), np.std(codebook[i])
+        if mean < min_mean:
+            min_mean = mean
+            mean_token = i
+        if std < min_std:
+            min_std = std
+            std_token = i
+        if std > max_std:
+            max_std = std
+    print(f"Minimum mean: {min_mean} for token {mean_token}")
+    print(f"Minimum std: {min_std} for token {std_token}")
+    print(f"Maximum std: {max_std}")
+
+def get_code_distribution(model, model_name, test_datasets, datasets, channels, save_dir, bins, pivot=None):
+    for ds_name in datasets:
+        for do_channel in channels:
+            if ds_name in test_datasets and do_channel in test_datasets[ds_name]:
+                test_ds = test_datasets[ds_name][do_channel]
+                all_codes = []
+                for filename in tqdm(test_ds.file_list):
+                    codes = np.load(os.path.join(save_dir, ds_name, do_channel, filename))['data'] 
+                    all_codes.append(codes)
+                num_codebooks = all_codes[0].shape[0]
+                histogram_bins = bins
+
+                # Prepare to aggregate data for each feature
+                feature_counts = np.zeros((num_codebooks, histogram_bins), dtype=int)
+
+                # Aggregate counts for each feature
+                for sample in all_codes:
+                    for codebook_idx in range(num_codebooks):
+                        feature_data = sample[codebook_idx] #T
+                        assert sample[codebook_idx].min() >= 0, "min 0"
+                        assert sample[codebook_idx].max() < bins, f"max {sample[codebook_idx].max()}"
+                        counts, _ = np.histogram(feature_data, bins=histogram_bins, range=(0, histogram_bins - 1))
+                        feature_counts[codebook_idx] += counts
+                
+                codebook_embeddings = model.codebooks[0].cpu().detach().numpy() 
+                index_to_distance = {i: np.linalg.norm(codebook_embeddings[i]) for i in range(bins)}  
+                distances = np.array([index_to_distance[i] for i in range(bins)])
+                sorted_indices = np.argsort(distances)
+                distances_sorted = distances[sorted_indices]
+                print(f'min distance {distances.min()} max distance {distances.max()}')
+
+                plt.figure(figsize=(10, 5))  # Create one figure outside the loop
+
+                for codebook_idx in range(num_codebooks):
+                    counts_sorted = feature_counts[codebook_idx][sorted_indices]
+                    total = np.sum(counts_sorted)
+                    densities = counts_sorted / total  # Normalize to density
+
+                    if codebook_idx < 6:
+                        plt.fill_between(distances_sorted, densities, alpha=0.3, label=f'Codebook {codebook_idx}')
+                    else:
+                        plt.fill_between(distances_sorted, densities, alpha=0.3)
+
+                plt.xlabel(f"Embedding Norms")
+                plt.ylabel("Density")
+                plt.title("Distribution of Counts by Distance (All Codebooks)")
+                plt.suptitle(f"{model_name}")   # Subtitle above the whole figure
+                plt.legend()
+                plt.tight_layout()
+                save_path = os.path.join(f"/data/scratch/ellen660/encodec/encodec/visualizations/token_distribution", do_channel, "30_seconds")  # Save as PNG
+                os.makedirs(save_path, exist_ok=True)
+                plt.savefig(f"{save_path}/{ds_name}.png", dpi=300, bbox_inches="tight")  # High-quality save
+                plt.close()  # Close the figure to free memory
+                print(f'done plotting token distribution for {ds_name}')
+
+# def get_code_distribution(channel, ds_name, test_ds, save_dir, bins, pivot=None):
+#     all_codes = []
+#     for filename in tqdm(test_ds.file_list):
+#         codes = np.load(os.path.join(save_dir, ds_name, channel, filename))['data'] #32 by ?
+#         all_codes.append(codes)
+#     num_codebooks = all_codes[0].shape[0]
+#     histogram_bins = bins
+
+#     # Prepare to aggregate data for each feature
+#     feature_counts = np.zeros((num_codebooks, histogram_bins), dtype=int)
+
+#     # Aggregate counts for each feature
+#     for sample in all_codes:
+#         for codebook_idx in range(num_codebooks):
+#             feature_data = sample[codebook_idx] #T
+#             assert sample[codebook_idx].min() >= 0, "min 0"
+#             assert sample[codebook_idx].max() < bins, f"max {sample[codebook_idx].max()}"
+#             counts, _ = np.histogram(feature_data, bins=histogram_bins, range=(0, histogram_bins - 1))
+#             feature_counts[codebook_idx] += counts
+    
+#     if pivot is None:
+#         #sort by highest to lowest frequency 
+#         pivot = {}
+#         for codebook_idx in range(num_codebooks):
+#             sorted_indices_desc = np.argsort(feature_counts[codebook_idx])[::-1] #highest to lowest
+#             pivot[codebook_idx] = sorted_indices_desc
+#             assert np.array_equal(feature_counts[codebook_idx][sorted_indices_desc],sorted(feature_counts[codebook_idx], reverse=True))
+#         most_common = {}
+#         for codebook_idx in range(num_codebooks):
+#             # feature_counts[codebook_idx] = feature_counts[codebook_idx][pivot[codebook_idx]]
+#             most_common[codebook_idx] = {i: {"idx": pivot[codebook_idx][i],
+#                                              "count": feature_counts[codebook_idx][pivot[codebook_idx][i]], 
+#                                              "frequency": feature_counts[codebook_idx][pivot[codebook_idx][i]]/feature_counts[codebook_idx].sum()}
+#                                             for i in range(5)} #5 most common
+#         return pivot, most_common
+#     else:
+#         for codebook_idx in range(num_codebooks):
+#             feature_counts[codebook_idx] = feature_counts[codebook_idx][pivot[codebook_idx]]
             
-        # Plot histograms for each feature
-        fig, axes = plt.subplots(8, 4, figsize=(20, 15))  # 8 rows, 4 columns for 32 features
-        axes = axes.flatten()
+#         # Plot histograms for each feature
+#         fig, axes = plt.subplots(8, 4, figsize=(20, 15))  # 8 rows, 4 columns for 32 features
+#         axes = axes.flatten()
 
-        for codebook_idx in range(num_codebooks):
-            axes[codebook_idx].bar(range(histogram_bins), feature_counts[codebook_idx], color='blue', alpha=0.7)
-            axes[codebook_idx].set_title(f'Codebook {codebook_idx} Distribution')
-            axes[codebook_idx].set_xlim(-10, histogram_bins + 10)
-            axes[codebook_idx].set_xlabel('Index')
-            axes[codebook_idx].grid(True)
-            axes[codebook_idx].set_ylabel('Frequency')
+#         for codebook_idx in range(num_codebooks):
+#             axes[codebook_idx].bar(range(histogram_bins), feature_counts[codebook_idx], color='blue', alpha=0.7)
+#             axes[codebook_idx].set_title(f'Codebook {codebook_idx} Distribution')
+#             axes[codebook_idx].set_xlim(-10, histogram_bins + 10)
+#             axes[codebook_idx].set_xlabel('Index')
+#             axes[codebook_idx].grid(True)
+#             axes[codebook_idx].set_ylabel('Frequency')
 
-        # Remove empty subplots if any
-        for i in range(num_codebooks, len(axes)):
-            fig.delaxes(axes[i])
+#         # Remove empty subplots if any
+#         for i in range(num_codebooks, len(axes)):
+#             fig.delaxes(axes[i])
 
-        plt.tight_layout()
-        save_path = os.path.join(save_dir, ds_name, f"{ds_name}_token_distribution.png")  # Save as PNG
-        plt.savefig(save_path, dpi=300, bbox_inches="tight")  # High-quality save
-        plt.close()  # Close the figure to free memory
+#         plt.tight_layout()
+#         save_path = os.path.join(save_dir, ds_name, f"{ds_name}_token_distribution.png")  # Save as PNG
+#         plt.savefig(save_path, dpi=300, bbox_inches="tight")  # High-quality save
+#         plt.close()  # Close the figure to free memory
 
-    print(f"Finished processing {ds_name}")
+#     print(f"Finished processing {ds_name}")
 
-def plot_most_frequent_signals(ds_name, pivot, model, save_dir, config, device):
-    num_codebooks = int(100 * config.model.target_bandwidths[0])
-    # print(f'num codebooks {num_codebooks}')
-    codes = []
-    for codebook_idx in range(num_codebooks):
-        most_common_code = pivot[codebook_idx][0]
-        codes.append(most_common_code)
-    codes = torch.tensor(codes).unsqueeze(1).unsqueeze(2) #N, B, T
-    codes = codes.to(device)
+# def plot_most_frequent_signals(ds_name, pivot, model, save_dir, config, device):
+#     num_codebooks = int(100 * config.model.target_bandwidths[0])
+#     # print(f'num codebooks {num_codebooks}')
+#     codes = []
+#     for codebook_idx in range(num_codebooks):
+#         most_common_code = pivot[codebook_idx][0]
+#         codes.append(most_common_code)
+#     codes = torch.tensor(codes).unsqueeze(1).unsqueeze(2) #N, B, T
+#     codes = codes.to(device)
 
-    # Plot histograms for each feature
-    fig, axes = plt.subplots(8, 4, figsize=(20, 15))  # 8 rows, 4 columns for 32 features
-    axes = axes.flatten()
+#     # Plot histograms for each feature
+#     fig, axes = plt.subplots(8, 4, figsize=(20, 15))  # 8 rows, 4 columns for 32 features
+#     axes = axes.flatten()
 
-    prev = None
-    for n_q in range(1,num_codebooks+1):
-        print(f'codes shape {codes.shape}')
-        quantized = model.quantizer.decode(codes, n_q=n_q)
-        print(f'quantized shape {quantized.shape}')
-        output = model.decoder(quantized).detach().cpu().numpy().squeeze()
-        print(f'model shape {model.shape}')
-        sys.exit()
-        if prev is not None:
-            diff = output - prev 
-        else:
-            diff = output
-        mean = np.mean(diff)
-        std = np.std(diff)
-        time = np.arange(0, 300)
-        axes[n_q-1].plot(time, diff)
-        axes[n_q-1].set_title(f"Signal n_q={n_q} - Signal n_q={n_q-1}, mean {float(f'{mean:.6f}')}, std {float(f'{std:.6f}')}")
-        axes[n_q-1].set_ylim(-0.5, 0.5)
-        prev = output
+#     prev = None
+#     for n_q in range(1,num_codebooks+1):
+#         print(f'codes shape {codes.shape}')
+#         quantized = model.quantizer.decode(codes, n_q=n_q)
+#         print(f'quantized shape {quantized.shape}')
+#         output = model.decoder(quantized).detach().cpu().numpy().squeeze()
+#         print(f'model shape {model.shape}')
+#         sys.exit()
+#         if prev is not None:
+#             diff = output - prev 
+#         else:
+#             diff = output
+#         mean = np.mean(diff)
+#         std = np.std(diff)
+#         time = np.arange(0, 300)
+#         axes[n_q-1].plot(time, diff)
+#         axes[n_q-1].set_title(f"Signal n_q={n_q} - Signal n_q={n_q-1}, mean {float(f'{mean:.6f}')}, std {float(f'{std:.6f}')}")
+#         axes[n_q-1].set_ylim(-0.5, 0.5)
+#         prev = output
     
-    plt.tight_layout()
-    save_path = os.path.join(save_dir, ds_name, f"{ds_name}_most_common_signals.png")  # Save as PNG
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")  # High-quality save
-    plt.close()  # Close the figure to free memory
+#     plt.tight_layout()
+#     save_path = os.path.join(save_dir, ds_name, f"{ds_name}_most_common_signals.png")  # Save as PNG
+#     plt.savefig(save_path, dpi=300, bbox_inches="tight")  # High-quality save
+#     plt.close()  # Close the figure to free memory
 
-    #plot the most common signal 
-    quantized = model.quantizer.decode(codes, n_q=num_codebooks)
-    output = model.decoder(quantized).detach().cpu().numpy().squeeze()
-    fig, ax = plt.subplots()  # Create a single axes (not multiple)
-    # Plot only the specified axes
-    time = np.arange(0, 300)
-    ax.plot(time, output)
-    ax.set_title(f"{ds_name}_generic_signal")
-    ax.set_ylim(-2, 2)
-    save_path = os.path.join(save_dir, ds_name, f"{ds_name}_generic_signal.png")  # Save as PNG
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")  # High-quality save
-    plt.close()  # Close the figure to free memory
+#     #plot the most common signal 
+#     quantized = model.quantizer.decode(codes, n_q=num_codebooks)
+#     output = model.decoder(quantized).detach().cpu().numpy().squeeze()
+#     fig, ax = plt.subplots()  # Create a single axes (not multiple)
+#     # Plot only the specified axes
+#     time = np.arange(0, 300)
+#     ax.plot(time, output)
+#     ax.set_title(f"{ds_name}_generic_signal")
+#     ax.set_ylim(-2, 2)
+#     save_path = os.path.join(save_dir, ds_name, f"{ds_name}_generic_signal.png")  # Save as PNG
+#     plt.savefig(save_path, dpi=300, bbox_inches="tight")  # High-quality save
+#     plt.close()  # Close the figure to free memory
 
-    print(f"Finished processing {ds_name}")
+#     print(f"Finished processing {ds_name}")
 
 def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--user_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/ablations")
     parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes/predictions")
-    # parser.add_argument("--model_dir", type=str, default="bwh_mgh/6_seconds_6_codebooks/20250420/test")
-    parser.add_argument("--model_dir", type=str, default="bwh_mgh/30_seconds/20250501/ max_epoch=400 bins=512 batch_size=16 lr=1e-4")    
+    parser.add_argument("--model_dir", type=str, default="bwh_mgh/6_seconds_6_codebooks/20250420/test")
+    # parser.add_argument("--model_dir", type=str, default="bwh_mgh/30_seconds/20250501/ max_epoch=400 bins=512 batch_size=16 lr=1e-4")    
     # parser.add_argument("--model_dir", type=str, default="no_discrim/6_seconds_6_codebooks/20250402/test")
-    parser.add_argument("--datasets", type=List[str], default=["shhs2"])
-    parser.add_argument("--resume", type=bool, default=True)
+    parser.add_argument("--datasets", type=List[str], default=["mesa"])
+    parser.add_argument("--resume", type=bool, default=False)
     parser.add_argument("--do_channel", type=List[str], default=["thorax"])
     #    # datasets = ["mgh", "shhs1", "shhs2", "mros1", "mros2", "wsc", "cfs", "bwh", "mesa", "mgh_rf"]
-    return parser.parse_args()
+    parser.add_argument("--do_code_generation", type=bool, default=True)
+    parser.add_argument("--do_token_distribution", type=bool, default=False)
+    return parser.parse_args() 
 
 if __name__ == "__main__":
     args = set_args()
@@ -286,10 +384,11 @@ if __name__ == "__main__":
     print(f'compression ratio {compression_ratio}')
 
     # Initialize directories
-    os.makedirs(save_dir, exist_ok=True)
-    for ds_name in datasets:
-        for channel in do_channel:
-            os.makedirs(os.path.join(save_dir, ds_name, channel), exist_ok=True)
+    if args.do_code_generation:
+        os.makedirs(save_dir, exist_ok=True)
+        for ds_name in datasets:
+            for channel in do_channel:
+                os.makedirs(os.path.join(save_dir, ds_name, channel), exist_ok=True)
 
     #Initialize the model
     model = init_model(config)
@@ -306,19 +405,29 @@ if __name__ == "__main__":
     model.eval()
 
     #Code Generation
-    test_datasets = init_dataset(config, mode="test")
-    for channel in do_channel:
-        for ds_name in datasets:
-            try:
-                test_ds = test_datasets[ds_name][channel]
-            except:
-                print(f'channel {channel} not found in dataset {ds_name}')
-                break
-            done = set()
-            if resume:
-                done = set([f for f in os.listdir(os.path.join(save_dir, ds_name, channel)) if f.endswith('.npz')])
-            l1 = process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done=done, channel=channel)
-            print(f'l1 for {ds_name} channel {channel}: {l1}')
+    if args.do_code_generation:
+        test_datasets = init_dataset(config, mode="test")
+        for channel in do_channel:
+            for ds_name in datasets:
+                try:
+                    test_ds = test_datasets[ds_name][channel]
+                except:
+                    print(f'channel {channel} not found in dataset {ds_name}')
+                    break
+                done = set()
+                if resume:
+                    done = set([f for f in os.listdir(os.path.join(save_dir, ds_name, channel)) if f.endswith('.npz')])
+                l1 = process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done=done, channel=channel)
+                print(f'l1 for {ds_name} channel {channel}: {l1}')
+
+    if args.do_token_distribution:
+        get_codebook(model)
+        test_datasets = init_dataset(config, mode="test")
+        # breakpoint()
+        num_codebooks = 32
+        histogram_bins = 512
+        get_code_distribution(model, args.model_dir, test_datasets, datasets, do_channel, save_dir, bins=histogram_bins)
+        # compare_distributions(test_datasets, datasets, do_channel, save_dir, model, histogram_bins)
 
     # #Token Distribution
     # test_datasets = init_dataset(config, mode="test")

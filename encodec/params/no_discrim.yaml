@@ -5,7 +5,7 @@ common:
   log_every: 5
   save_every: 50
   test_every: 25
-  max_epoch: 200
+  max_epoch: 400
   seed: 42
   gradient_clipping: true
   gradient_clipping_value: 0.1

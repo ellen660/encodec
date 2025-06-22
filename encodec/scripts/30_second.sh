@@ -8,7 +8,8 @@ yaml_file="no_discrim"
 path="/data/scratch/ellen660/encodec/encodec/params/$yaml_file.yaml"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 run_name="30_seconds"
-resume_from="/data/scratch/ellen660/encodec/encodec/ablations/no_discrim/30_seconds/20250402/test"
+# resume_from="/data/scratch/ellen660/encodec/encodec/ablations/no_discrim/30_seconds/20250402/test"
+resume_from=""
 
 # Set PATH_TO_USE based on whether RESUME_PATH is empty or not
 if [ -n "$resume_from" ]; then

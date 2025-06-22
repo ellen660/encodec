@@ -2,6 +2,7 @@ from clean_model import EncodecModel
 from data import init_dataset
 from losses import total_loss, disc_loss, Metrics, MetricsArgs, LinearWarmupCosineAnnealingLR, WarmupScheduler, ReconstructionLoss
 from msstftd import MultiScaleSTFTDiscriminator
+from modules import log_model_details
 
 import torch
 import torch.optim as optim
@@ -383,7 +384,8 @@ def init_model(config):
     # total_params = sum(p.numel() for p in disc_model.parameters())
     # print(f"Discriminator Total number of parameters: {total_params}")
     # print(f"model {model}")
-    # breakpoint()
+    log_model_details(model, "model.txt")
+    breakpoint()
     return model, disc_model
 
 def save_checkpoint(model, optimizer, scheduler, epoch, path):
