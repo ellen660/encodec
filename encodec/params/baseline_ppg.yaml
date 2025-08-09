@@ -1,29 +1,28 @@
 exp_details:
-  name: ppg
+  name: mesa_baseline_ppg
   description: 6_seconds_6_codebooks
 common:
   log_every: 5
-  save_every: 50
-  test_every: 25
-  max_epoch: 400
+  save_every: 25
+  test_every: 10
+  max_epoch: 200
   seed: 42
-  gradient_clipping: true
+  gradient_clipping: false
   gradient_clipping_value: 0.1
-  num_workers: 10
+  num_workers: 4
   debug: false
 optimization:
   lr: 0.0001
-  batch_size: 12
+  batch_size: 16
   beta1: 0.8
   beta2: 0.9
   warmup_epoch: 10
 dataset:
-  max_length: 576000
-  external: true
+  max_length: 7200
+  external: false
   cv: 0
-  mgh: 0
-  bwh: 0
-  mesa: 1
+  datasets: [mesa, mgh2, bwh]
+  mode: ppg
 loss:
   weight_l1: 1
   weight_l2: 0.01
@@ -35,18 +34,18 @@ loss:
 spectrogram_loss:
   alpha: 0.01
   bandwidth: null
-  n_fft: 102
+  n_fft: 64
   hop_length: 5
   win_length: 30
 model:
   ratios:
-    - 5
-    - 5
+    - 4
+    - 4
     - 4
     - 3
     - 2
   bins: 1024
-  dimension: 512
+  dimension: 256
   target_bandwidths:
     - 0.06
   audio_normalize: false

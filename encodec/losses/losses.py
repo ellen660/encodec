@@ -4,7 +4,7 @@ import sys
 
 # https://github.com/ZhikangNiu/encodec-pytorch/blob/main/losses.py
 
-def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav, sample_rate=10):
+def total_loss(fmap_real, logits_fake, fmap_fake, input_wav, output_wav):
     """This function is used to compute the total loss of the encodec generator.
         Loss = \lambda_t * L_t + \lambda_f * L_f + \lambda_g * L_g + \lambda_feat * L_feat
         L_t: time domain loss | L_f: frequency domain loss | L_g: generator loss | L_feat: feature loss

@@ -56,7 +56,7 @@ class EncodecModel(nn.Module):
                  decoder: m.SEANetDecoder,
                  quantizer: qt.ResidualVectorQuantizer,
                  target_bandwidths: tp.List[float], 
-                 sample_rate: int, #10 fs
+                 sample_rate: int, 
                  channels: int, #1
                  segment: tp.Optional[float] = None):
         super().__init__()
@@ -73,7 +73,6 @@ class EncodecModel(nn.Module):
         self.n_q = quantizer.n_q
         assert 2 ** self.bits_per_codebook == self.quantizer.bins, "quantizer bins must be a power of 2."
         assert self.segment == None, f"expected segment to be none, got {self.segment}"
-        assert self.sample_rate == 100
         assert self.channels == 1
         print(f'number of codebooks {self.n_q}')
         

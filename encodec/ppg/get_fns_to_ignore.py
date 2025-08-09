@@ -2,9 +2,36 @@ import os
 import numpy as np
 import json
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+from encodec.ppg.ppg_dataset import ROOT
+from encodec.ppg.fns_to_ignore_bwh import fns_to_ignore as bwh_fns_to_ignore
+from encodec.ppg.fns_to_ignore_mesa import fns_to_ignore as mesa_fns_to_ignore
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
+from typing import Union, Optional, Tuple, Iterable
 
-# Function to compute sliding window standard deviation
-def sliding_std(data, window_size):
+
+def _sliding_std(data: np.ndarray, window_size: int):
+    """
+    Computes the sliding (moving) standard deviation over a 1D NumPy array.
+
+    Args:
+        data (np.ndarray): A 1D array of numerical data.
+        window_size (int): The number of elements in each sliding window.
+            Must be a positive integer less than or equal to the length of `data`.
+
+    Returns:
+        np.ndarray: A 1D array of standard deviations, one for each valid sliding window.
+            The output has shape (len(data) - window_size + 1,).
+
+    Raises:
+        ValueError: If `window_size` is not a positive integer or exceeds the length of `data`.
+
+    Example:
+        >>> x = np.array([1, 2, 3, 4, 5])
+        >>> _sliding_std(x, window_size=3)
+        array([0.81649658, 0.81649658, 0.81649658])
+    """
     cumsum = np.cumsum(data)
     cumsum_sq = np.cumsum(data**2)
 
@@ -19,55 +46,117 @@ def sliding_std(data, window_size):
 
     return np.sqrt(np.maximum(window_var, 0))  # Avoid numerical errors
 
-max_length = 100 * 60 * 60 * 4
-fs = 100
 
-root = "/data/netmit/sleep_lab/sandbox/ppg/bwh"
+def _check_file(
+    fn: str, fs: int, root: str, min_length: int, sliding_window: int
+) -> Union[str, None]:
+    """
+    Helper function, checks if a file is "bad".
+    A bad file is defined as:
+        1. the file doesn't load
+        2. the file is too short (less than 4 hours)
+        3. the file has bad data (1 hour of zero values)
 
-fns_to_ignore = []
+    Args:
+        fn: filename
+        fs: sampling rate
+        root: datapath
+        min_length: minimum length of the file. default 4 hours
+        sliding_window: window length to look for flatlines. default 1 minute
 
-fns = sorted(os.listdir(root))
-
-for fn in tqdm(fns):
+    Returns:
+        fn filename if bad file
+        None if good file
+    """
     filepath = os.path.join(root, fn)
     try:
-        ppg = np.load(filepath)['data']
-        fs = np.load(filepath)['fs']
-        assert fs == 100
+        data = np.load(filepath)
+        ppg = data["data"]
+        if data["fs"] != fs:
+            raise ValueError("Sampling rate mismatch")
     except:
-        fns_to_ignore.append(fn)
-        print(f'bad file {fn}')
-        continue
-    if ppg.shape[0] <= max_length:
-        fns_to_ignore.append(fn)
-        print(f"ignoring {fn} because shape is {ppg.shape}")
-        continue
+        return fn
 
-    std_values = sliding_std(ppg, max_length)
+    if ppg.shape[0] <= min_length:
+        return fn
 
-    if np.any(std_values == 0):
-        fns_to_ignore.append(fn)
-        print(f"ignoring {fn} because of zero std")
-        continue
+    threshold = 1e-8  # using threshold to capture all cases
+    std_values = _sliding_std(ppg, sliding_window)
+    if np.any(std_values < threshold):
+        return fn
 
-        # loop through every segment of max_length and check if there are any nan or inf values
-        # for i in range(0, breathing.shape[0] - max_length):
-        #     breathing_segment = breathing[i:i+max_length]
-            
-            # breathing_segment, _, _ = detect_motion_iterative(breathing_segment, fs)
-            # breathing_segment = signal_crop(breathing_segment)
-            # breathing_segment = (breathing_segment - np.mean(breathing_segment)) / np.std(breathing_segment)
+    return None  # File is OK
 
-            # if np.std(breathing_segment) == 0:
-            #     fns_to_ignore.append(fn)
-            #     print(f"ignoring {fn} because of zero std")
-            #     break
 
-            # if np.any(np.isnan(breathing_segment)) or np.any(np.isinf(breathing_segment)):
-            #     fns_to_ignore.append(fn)
-            #     print(f"ignoring {fn} because of nan or inf")
-            #     break
+def get_fns_to_ignore(dataset: str, num_workers: int = 10):
+    """
+    Given dataset (bwh or mesa), finds and records the names of the bad files.
+    Uses CPU multicore processing
 
-# save filenames to ignore to a .py file
-with open("/data/scratch/ellen660/encodec/encodec/ppg/fns_to_ignore_bwh.py", "w") as f:
-    f.write(f"fns_to_ignore = {json.dumps(fns_to_ignore)}")
+    Args:
+        dataset: bwh or mesa
+        num_workers: number of CPU cores
+    """
+    print(f"#################### Finding bad files for {dataset} ####################")
+    fs = ROOT[dataset]["fs"]
+    min_length = fs * 60 * 60 * 4  # 4 hours
+    sliding_window = fs * 60 * 30 * 1  # 1 hour
+    root = ROOT[dataset]["root"]
+    fns_to_ignore = []
+    fns = sorted(os.listdir(root))
+
+    checker = partial(
+        _check_file,
+        fs=fs,
+        root=root,
+        min_length=min_length,
+        sliding_window=sliding_window,
+    )
+
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        results = list(tqdm(executor.map(checker, fns), total=len(fns)))
+
+    fns_to_ignore = [fn for fn in results if fn is not None]
+    breakpoint()
+
+    # save_path = f"/data/scratch/ellen660/encodec/encodec/ppg/fns_to_ignore_{dataset}.py"
+    # with open(save_path, "w") as f:
+    #     f.write(f"fns_to_ignore = {json.dumps(fns_to_ignore)}")
+
+    print(f"Saved {len(fns_to_ignore)} bad files to {save_path}")
+    print(f"########################################")
+
+
+def plot_bad_file(dataset: str, filename: str):
+    """
+    Plots a bad file to test whether it is really bad
+
+    Args:
+        dataset: bwh or mesa
+        filename: bad file
+    """
+    root = ROOT[dataset]["root"]
+    filepath = os.path.join(root, filename)
+    data = np.load(filepath)["data"]
+    print(f"data shape {data.shape}")
+
+    plt.plot(data)
+    plt.xlabel("Time")
+    plt.ylabel("Amplitude")
+    plt.title(f"{dataset}_{filename[:6]}")
+
+    save_path = f"/data/scratch/ellen660/encodec/encodec/ppg/visualization/{dataset}/bad_file_{filename[:-4]}.png"
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+
+if __name__ == "__main__":
+    get_fns_to_ignore("mesa")
+    # bad_file = "mesa-sleep-0010.npz"
+    # _check_file(bad_file, fs=100, root = ROOT["mesa"]["root"], min_length=100*60*60*4, sliding_window=100*60*1)
+
+    # 1 hour: 451 
+    # 1 minute: 993 
+    # 30 minutes: 627
+
+    # Looks like we are gonna have to clip again

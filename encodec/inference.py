@@ -18,90 +18,87 @@ import matplotlib.pyplot as plt
 import numpy as np
 from typing import List
 from scipy.spatial.distance import jensenshannon
-from ppg import BwhPpgDataset
+# from ppg import BwhPpgDataset
+from train import load_config, init_model, load_checkpoint
+from baseline_data import init_dataset
 
-class ConfigNamespace:
-    """Converts a dictionary into an object-like namespace for easy attribute access."""
-    def __init__(self, dictionary):
-        for key, value in dictionary.items():
-            if isinstance(value, dict):
-                value = ConfigNamespace(value)  # Recursively convert nested dictionaries
-            setattr(self, key, value)
+import torch
+import torch.multiprocessing as mp
+from torch.utils.data import Subset, DataLoader
+import numpy as np
+import os
+from tqdm import tqdm
 
-# Load the YAML file and convert to ConfigNamespace
-def load_config(filepath, log_dir=None):
-    #make directory
-    with open(filepath, "r") as file:
-        config_dict = yaml.safe_load(file)
-    return ConfigNamespace(config_dict)
-
-def init_model(config):
-    model = EncodecModel._get_model(
+def build_model_from_config(config):
+    return EncodecModel._get_model(
         config.model.target_bandwidths, 
         config.model.sample_rate, 
         config.model.channels,
-        causal=config.model.causal, model_norm=config.model.norm, 
-        segment=eval(config.model.segment), 
+        causal=config.model.causal,
+        model_norm=config.model.norm,
+        segment=eval(config.model.segment),
         ratios=config.model.ratios,
         bins=config.model.bins,
         dimension=config.model.dimension,
     )
-    # disc_model = MultiScaleSTFTDiscriminator(
-    #     in_channels=config.model.channels,
-    #     out_channels=config.model.channels,
-    #     filters=config.model.filters,
-    #     hop_lengths=config.model.disc_hop_lengths,
-    #     win_lengths=config.model.disc_win_lengths,
-    #     n_ffts=config.model.disc_n_ffts,
-    # )
 
-    # log model, disc model parameters and train mode
-    # print(model)
-    # print(disc_model)
-    print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
-    # print(f"disc model train mode :{disc_model.training}")
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"Model Total number of parameters: {total_params}")
-    # total_params = sum(p.numel() for p in disc_model.parameters())
-    # print(f"Discriminator Total number of parameters: {total_params}")
-    return model
 
-def init_dataset(config, mode="test"):
-    cv = config.dataset.cv
-    max_length = config.dataset.max_length
-
-    datasets = {}
-
-    datasets["bwh"] = BwhPpgDataset(dataset = "bwh_new", mode = mode, cv = cv, max_length = max_length)
-                    
-    return datasets
-
-def process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done):
+@torch.no_grad()
+def process_dataset(rank, test_ds, build_model_fn, model_ckpt_path, save_dir, compression_ratio, done, fs, device_ids, config):
     """
-    Process a single dataset on the specified GPU.
+    Process a chunk of the dataset on a specific GPU (rank).
     """
-    test_ds.file_list = [f for f in test_ds.file_list if f not in done]
-    test_loader = DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=4)
-    l1, count = 0, 0
-    for item in tqdm(test_loader, desc=f"Processing {ds_name}"):
-        x = item["x"].to(device)
+    device = torch.device(f"cuda:{device_ids[rank]}")
+    
+    # Re-initialize the model and load weights
+    model = build_model_fn(config).to(device)
+    model.load_state_dict(torch.load(model_ckpt_path, map_location=device)['model_state_dict'])
+    model.eval()
+
+    test_loader = DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=2, pin_memory=True)
+    
+    for item, ds_id in tqdm(test_loader, desc=f"[GPU {device_ids[rank]}] Saving codes...", position=rank):
+        x = item["x"].to(device, non_blocking=True)
         filename = item["filename"][0]
-        print(f'filename: {filename} x shape: {x.shape}')
-        _, codes, _, _, = model(x)
-        # print(f'x.shape: {x.shape}')
-        # l1 += torch.nn.L1Loss(reduction='mean')(x, x_hat).item()
-        # count += 1
-        # breakpoint()
 
-        # Save the prediction
-        # np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename), data=x_hat, fs=10)
+        if filename not in done:
+            _, codes, _, _ = model(x)
 
-        # Save the codes
-        save_path = os.path.join(save_dir, ds_name, filename)
-        # os.makedirs(os.path.dirname(save_path), exist_ok=True)
-        np.savez(save_path, data=codes.squeeze().cpu().detach().numpy(), fs=100/compression_ratio)
-    print(f"Finished processing {ds_name}")
-    return l1 / count if count != 0 else None
+            save_path = os.path.join(save_dir, ds_id[0], filename)
+            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            np.savez(save_path, data=codes.squeeze().cpu().numpy(), fs=fs / compression_ratio)
+
+    print(f"[GPU {device_ids[rank]}] Finished processing.")
+
+
+# @torch.no_grad()
+# def process_dataset(test_ds, model, save_dir, compression_ratio, done, fs):
+#     """
+#     Process a single dataset on the specified GPU.
+#     """
+#     test_loader = DataLoader(test_ds, batch_size=1, shuffle=False, num_workers=4)
+#     l1, count = 0, 0
+#     model.eval()
+#     for item, ds_id in tqdm(test_loader, desc=f"Saving codes..."):
+#         x = item["x"].to(device)
+#         filename = item["filename"][0]
+#         if filename not in done:
+#             # print(f'filename: {filename} x shape: {x.shape}')
+#             _, codes, _, _, = model(x)
+#             # print(f'x.shape: {x.shape}')
+#             # l1 += torch.nn.L1Loss(reduction='mean')(x, x_hat).item()
+#             # count += 1
+#             # breakpoint()
+
+#             # Save the prediction
+#             # np.savez(os.path.join(save_dir, "shhs2_new", "thorax", filename), data=x_hat, fs=10)
+
+#             # Save the codes
+#             save_path = os.path.join(save_dir, ds_id[0], filename)
+#             # os.makedirs(os.path.dirname(save_path), exist_ok=True)
+#             np.savez(save_path, data=codes.squeeze().cpu().detach().numpy(), fs=fs/compression_ratio)
+#     print(f"Finished processing {ds_name}")
+#     return l1 / count if count != 0 else None
 
 def get_code_distribution(channel, ds_name, train_ds, save_dir, model, bins):
     all_codes = []
@@ -405,27 +402,35 @@ def set_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--user_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/ablations")
     parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes")
-    parser.add_argument("--model_dir", type=str, default="ppg/6_seconds_6_codebooks/20250418-1215/ max_epoch=400 bins=1024 batch_size=12 lr=1e-4")
-    parser.add_argument("--datasets", type=List[str], default=["bwh"])
+    parser.add_argument("--model_dir", type=str, default="ppg/mesa_new/20250806_1616")
+    parser.add_argument("--datasets",type=str, nargs='+', default=["mesa", "bwh", "mgh2"],help="List of dataset names (e.g., --datasets mesa bwh mgh2)")
     parser.add_argument("--resume", type=bool, default=True)
     parser.add_argument("--do_channel", type=List[str], default=["ppg"])
-    parser.add_argument("--do_code_generation", type=bool, default=False)
-    parser.add_argument("--do_token_distribution", type=bool, default=True)
+    parser.add_argument("--do_code_generation", type=bool, default=True)
+    parser.add_argument("--do_token_distribution", type=bool, default=False)
+        
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = set_args()
     log_dir = os.path.join(args.user_dir, args.model_dir)
-    save_dir = os.path.join(args.save_dir, args.model_dir)
     datasets = args.datasets
     resume = args.resume
     do_channel = args.do_channel
 
     # Load the YAML file
-    config = load_config(f'{log_dir}/config.yaml', log_dir)
+    _, config = load_config(filepath=f'{log_dir}/config.yaml', schemapath=None)
     compression_ratio = np.prod(config.model.ratios)
-    print(f'compression ratio {compression_ratio}')
+    print(f'compression ratio {compression_ratio} which is {compression_ratio/config.model.sample_rate} seconds')
 
+    
+    #Initialize the model
+    model, _ = init_model(config=config, train_discriminator=False, save_path=None)
+    device = torch.device("cuda:6")
+    model = model.to(device)
+    epoch = load_checkpoint(model=model, optimizer=None, scheduler=None, path=f"{log_dir}/model.pth", device=device)
+    model.eval()    
+    save_dir = os.path.join(args.save_dir, args.model_dir, str(epoch))
     # Initialize directories
     if args.do_code_generation:
         os.makedirs(save_dir, exist_ok=True)
@@ -433,38 +438,54 @@ if __name__ == "__main__":
             # for channel in do_channel:
             os.makedirs(os.path.join(save_dir, ds_name), exist_ok=True)
 
-    #Initialize the model
-    model = init_model(config)
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = model.to(device)
-    checkpoint_path_model = f"{log_dir}/model.pth"
-    # checkpoint_path_disc = f"{log_dir}/disc.pth"
-    print("Loading model and discriminator from checkpoint...")
-    checkpoint_model = torch.load(checkpoint_path_model, map_location=device)
-    # checkpoint_disc = torch.load(checkpoint_path_disc, map_location=device)
-    model.load_state_dict(checkpoint_model['model_state_dict'])
-    # disc.load_state_dict(checkpoint_disc)
-    print("Checkpoint loaded successfully!")
-    #dataparallel
-    # model = nn.DataParallel(model)
-    model.eval()
-    # breakpoint()
-
     #Code Generation
     if args.do_code_generation:
-        test_datasets = init_dataset(config, mode="test")
-        # for channel in do_channel:
-        for ds_name in datasets:
-            try:
-                test_ds = test_datasets[ds_name]
-            except:
-                print(f'ds {ds_name} not found')
-                break
-            done = set()
-            if resume:
-                done = set([f for f in os.listdir(os.path.join(save_dir, ds_name)) if f.endswith('.npz')])
-            l1 = process_dataset(ds_name, test_ds, model, save_dir, compression_ratio, done=done)
-            print(f'l1 for {ds_name}: {l1}')
+        inference_dataset = init_dataset(config=config, type="inference", datasets=args.datasets)
+        done = set()
+        if resume:
+            done = {
+                f
+                for ds_name in args.datasets
+                for f in os.listdir(os.path.join(save_dir, ds_name))
+                if f.endswith(".npz")
+            }
+            done = frozenset(done)
+        
+        def launch_multi_gpu_processing(test_ds, build_model_fn, model_ckpt_path, save_dir, compression_ratio, done, fs, config):
+            device_ids = list(range(torch.cuda.device_count()))
+            num_gpus = len(device_ids)
+
+            chunk_size = len(test_ds) // num_gpus
+            subsets = [Subset(test_ds, range(i * chunk_size, (i + 1) * chunk_size)) for i in range(num_gpus - 1)]
+            subsets.append(Subset(test_ds, range((num_gpus - 1) * chunk_size, len(test_ds))))  # last chunk
+            
+            ctx = mp.get_context('spawn')
+            processes = []
+
+            for rank in range(num_gpus):
+                p = ctx.Process(
+                    target=process_dataset,
+                    args=(rank, subsets[rank], build_model_fn, model_ckpt_path, save_dir, compression_ratio, done, fs, device_ids, config)
+                )
+                p.start()
+                processes.append(p)
+
+            for p in processes:
+                p.join()
+
+            
+        launch_multi_gpu_processing(
+            test_ds=inference_dataset,
+            build_model_fn=build_model_from_config,
+            model_ckpt_path=f"{log_dir}/model.pth",
+            save_dir=save_dir,
+            compression_ratio=compression_ratio,
+            done=done,
+            fs=config.model.sample_rate,
+            config=config
+        )
+        # train_l1 = process_dataset(test_ds=inference_dataset, model=model, save_dir=save_dir, compression_ratio=compression_ratio, done=done, fs=config.model.sample_rate)
+        # print(f'train_l1 for {args.datasets}: {train_l1}')
 
     #Token Distribution
     if args.do_token_distribution:

@@ -4,21 +4,26 @@ from torch.utils.data import Dataset
 from typing import List
 import sys
 
+
 class MergedDataset(Dataset):
-    def __init__(self, ds_list: List[Dataset], weight_list: List[float], sfreq = 1, debug = False):
+    def __init__(
+        self, ds_list: List[Dataset], weight_list: List[float], sfreq=1, debug=False
+    ):
         self.ds = ds_list
         self.weight = np.array(weight_list)
-        self.weight /= self.weight.sum() #TODO weigh it differently based on the dataset size
+        self.weight /= (
+            self.weight.sum()
+        )  # TODO weigh it differently based on the dataset size
         assert self.weight[0] > 0  # the first dataset is pivot
-        print(f'===> Dataset Merged: {self.weight}')
+        print(f"===> Dataset Merged: {self.weight}")
         if debug:
             size = 96
-            print(f'===> Debug mode: dataset size {size}')
+            print(f"===> Debug mode: dataset size {size}")
         else:
             size = 2048
         self.size = round(size * sfreq)
         self.mapping = {i: ds.dataset for i, ds in enumerate(ds_list)}
-    
+
     def __len__(self):
         return self.size
 

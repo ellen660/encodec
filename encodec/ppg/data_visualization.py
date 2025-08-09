@@ -7,11 +7,14 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Dataset
 import sys
 
-from encodec.ppg.bwh_ppg import BwhPpgDataset
+from encodec.ppg.ppg_dataset import PpgDataset
+from encodec.ppg.ppg_dataset import ROOT
+from encodec.ppg.fns_to_ignore_bwh import fns_to_ignore as bwh_fns_to_ignore
+from encodec.ppg.fns_to_ignore_mesa import fns_to_ignore as mesa_fns_to_ignore
 
 class VisualizeDataset:
     """
-    Visualizes a preprocessed dataset of PPG signals
+    Visualizes a Preprocessed dataset of PPG signals
     Input ds_name: Name of the dataset to visualize (e.g. "bwh", "mesa")
     Functions:
       -visualize_individual_patients
@@ -25,29 +28,25 @@ class VisualizeDataset:
       -print_info
          Prints class information
     """
+    root = ROOT
 
-    raw_paths = {
-        "bwh": ["/data/netmit/sleep_lab/sandbox/ppg/bwh", 100],
-        "mesa": ["/data/netmit/sleep_lab/sandbox/ppg/mesa", 64],
-    }
-
-    def __init__(self, ds_name: str):
-        self.ds_name = ds_name
-        self.fs = self.raw_paths[ds_name][1]
+    def __init__(self, dataset: str):
+        self.dataset = dataset
+        self.fs = self.root[dataset]["fs"]
         self.test_max_length = self.fs * 60 * 60 * 10  # 10 hours
         self.test_dataset = self._init_dataset("test", self.test_max_length)[
-            ds_name
+            dataset
         ]  # note that max length doesn't actually matter for test datset
         self.test_dataloader = DataLoader(
             self.test_dataset, batch_size=1, shuffle=False, num_workers=10
         )
         self.save_dir = (
-            f"/data/scratch/ellen660/encodec/encodec/ppg/visualization/{ds_name}"
+            f"/data/scratch/ellen660/encodec/encodec/ppg/visualization/{dataset}"
         )
         os.makedirs(self.save_dir, exist_ok=True)
         self.patients = 9
         self.train_max_length = self.fs * 60 * 60 * 1  # 1 hour
-        self.train_dataset = self._init_dataset("train", self.train_max_length)[ds_name]
+        self.train_dataset = self._init_dataset("train", self.train_max_length)[dataset]
         self.train_dataloader = DataLoader(
             self.train_dataset, batch_size=32, shuffle=False, num_workers=10
         )
@@ -57,7 +56,7 @@ class VisualizeDataset:
         Prints information about the dataset
         """
         print(f"################################# Visualization #################################")
-        print(f"Dataset: {self.ds_name}")
+        print(f"Dataset: {self.dataset}")
         print(f"Sampling frequency: {self.fs} Hz")
         print(f"Bit depth: Unknown")
         print(f"Save directory: {self.save_dir}")
@@ -73,11 +72,9 @@ class VisualizeDataset:
         """
         cv = 0
         max_length = max_length
-        datasets = {}
-        # datasets["mgh"] = BwhPpgDataset(dataset = "mgh_new", mode = mode, cv = cv, max_length = max_length)
-        datasets["bwh"] = BwhPpgDataset(
-            dataset="bwh_new", mode=mode, cv=cv, max_length=max_length
-        )
+        datasets = {"bwh":  PpgDataset(dataset="bwh", mode=mode, cv=cv, max_length=max_length),
+                    "mesa": PpgDataset(dataset="mesa", mode=mode, cv=cv, max_length=max_length)
+                    }
         return datasets
 
     def _plot_signal(self, x: np.ndarray, raw: np.ndarray, fs: int, filename: str):
@@ -151,6 +148,7 @@ class VisualizeDataset:
         Input fs: Sampling frequency in Hz
         Output: Plot of the frequency spectrum
         """
+        print(f'mean x {np.mean(x)}')
         X = np.fft.rfft(x)
         freqs = np.fft.rfftfreq(len(x), d=1 / self.fs)
         power = np.abs(X) ** 2
@@ -201,7 +199,7 @@ class VisualizeDataset:
         Input freq: Whether to visualize the frequency spectrum of the PPG signals
         Output: Saves plots of histogram distribution and raw vs processed PPG signals for 9 patients
         """
-        print(f"Visualizing {self.patients} patients from {self.ds_name} dataset")
+        print(f"Visualizing {self.patients} patients from {self.dataset} dataset")
         if histogram:
             self._plot_individual_distributions()
 
@@ -211,7 +209,7 @@ class VisualizeDataset:
                     break
                 x = batch["x"][0].numpy().squeeze()
                 filename = batch["filename"][0]
-                filepath = os.path.join(self.raw_paths[self.ds_name][0], filename)
+                filepath = os.path.join(self.root[self.dataset]["root"], filename)
                 raw = np.load(filepath)["data"].squeeze()[: self.test_max_length]
                 assert (
                     raw.shape[0] == x.shape[0]
@@ -251,7 +249,7 @@ class VisualizeDataset:
             align="edge",
         )
         axs.set_ylabel("Frequency")
-        axs.set_title(f"Dataset Distribution of {self.ds_name}")
+        axs.set_title(f"Dataset Distribution of {self.dataset}")
 
         axs.set_ylim(0, 0.12)
         save_path = os.path.join(self.save_dir, f"overall_preprocessed_dataset_distribution.png")
@@ -260,7 +258,13 @@ class VisualizeDataset:
 
 
 if __name__ == "__main__":
-    bwh_visualizer = VisualizeDataset("bwh")
-    bwh_visualizer.print_info()
-    bwh_visualizer.visualize_individual_patients(signal=True, histogram=True, freq=True)
+    # bwh_visualizer = VisualizeDataset("bwh")
+    # bwh_visualizer.print_info()
+    # bwh_visualizer.visualize_individual_patients(signal=True, histogram=True, freq=True)
     # bwh_visualizer.visualize_dataset_distribution()
+
+    mesa_visualizer = VisualizeDataset("mesa") 
+    mesa_visualizer.print_info()
+    mesa_visualizer.visualize_individual_patients(signal=True, histogram=True, freq=True)
+    # mesa_visualizer.visualize_dataset_distribution()
+

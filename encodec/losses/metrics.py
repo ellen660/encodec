@@ -1,46 +1,23 @@
-import torchmetrics
-import torchmetrics.classification
-import torch
-# from ipdb import set_trace as bp
-import numpy as np 
 from dataclasses import dataclass
+import torch
 
 @dataclass
 class MetricsArgs():
-    num_datasets: int
-    device: str
+    datasets: list[str]
+    device: torch.device
 
 class Metrics():
     def __init__(self, args: MetricsArgs):
         self.args = args 
-        self.used_keys = {}
-        self.num_datasets = args.num_datasets # 1 dataset for now
-        self.init_metrics()
+        self.datasets = args.datasets
+        self.clear_metrics()
 
-    def init_metrics(self):
+    def clear_metrics(self):
         self.metrics_dict = {
             # "Loss per step": {},
             "Loss Frequency": {},
             "Loss L1": {},
             "Loss L2": {},
-            "Loss L1 mgh_train_encodec": {},
-            "Loss L2 mgh_train_encodec": {},
-            "Loss L1 shhs2_new": {},
-            "Loss L2 shhs2_new": {},
-            "Loss L1 shhs1_new": {},
-            "Loss L2 shhs1_new": {},
-            "Loss L1 mros1_new": {},
-            "Loss L2 mros1_new": {},
-            "Loss L1 mros2_new": {},
-            "Loss L2 mros2_new": {},
-            "Loss L1 wsc_new": {},
-            "Loss L2 wsc_new": {},
-            "Loss L1 cfs": {},
-            "Loss L2 cfs": {},
-            "Loss L1 bwh_new": {},
-            "Loss L2 bwh_new": {},
-            "Loss L1 mesa_new": {},
-            "Loss L2 mesa_new": {},
             "Loss commit_loss": {},
             "Loss Frequency L1": {},
             "Loss Frequency L2": {},
@@ -55,11 +32,14 @@ class Metrics():
             "Logits Real": {},
             "Logits Fake": {},
         }
-        self.metrics = set(self.metrics_dict.keys())
+        for dataset in self.datasets:
+            self.metrics_dict[f"Loss L1 {dataset}"] = {}
+            self.metrics_dict[f"Loss L2 {dataset}"] = {}
+        self.used_keys = {}
     
     def fill_metrics(self, mapping, epoch):
         for key in mapping.keys():
-            assert key in self.metrics
+            assert key in self.metrics_dict
             self.metrics_dict[key][epoch] = mapping[key]
             self.used_keys[key] = True
         
@@ -70,43 +50,4 @@ class Metrics():
 
         return metrics
     
-    def clear_metrics(self):
-        self.metrics_dict = {
-            # "Loss per step": {},
-            "Loss Frequency": {},
-            "Loss L1": {},
-            "Loss L2": {},
-            "Loss L1 mgh_train_encodec": {},
-            "Loss L2 mgh_train_encodec": {},
-            "Loss L1 shhs2_new": {},
-            "Loss L2 shhs2_new": {},
-            "Loss L1 shhs1_new": {},
-            "Loss L2 shhs1_new": {},
-            "Loss L1 mros1_new": {},
-            "Loss L2 mros1_new": {},
-            "Loss L1 mros2_new": {},
-            "Loss L2 mros2_new": {},
-            "Loss L1 wsc_new": {},
-            "Loss L2 wsc_new": {},
-            "Loss L1 cfs": {},
-            "Loss L2 cfs": {},
-            "Loss L1 bwh_new": {},
-            "Loss L2 bwh_new": {},
-            "Loss L1 mesa_new": {},
-            "Loss L2 mesa_new": {},
-            "Loss commit_loss": {},
-            "Loss Frequency L1": {},
-            "Loss Frequency L2": {},
-            "Frequency Accuracy": {},
-            "Loss Discriminator": {},
-            "Max Discriminator Gradient": {},
-            "Loss Generator": {},
-            "Loss Feature": {},
-            "Max Gradient": {},
-            "Learning Rate": {},
-            "Loss": {},
-            "Logits Real": {},
-            "Logits Fake": {},
-        }
-        self.used_keys = {}
 

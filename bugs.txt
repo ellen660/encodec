@@ -1,0 +1,3 @@
+kmeans init for codebook which feels dumb?
+
+issue with residual = residual - quantized

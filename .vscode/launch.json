@@ -1,0 +1,56 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Encodec",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/encodec/train.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}",
+        "CUDA_VISIBLE_DEVICES": "7"
+      },
+      "args": [
+        "--exp_name", "baseline_eeg",
+        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/eeg"
+      ]
+    },
+    {
+      "name": "Debug visualization",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/encodec/new_visualize.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "args": [
+        "--model_path", "20250804_010937",
+        "--from_dir", "${workspaceFolder}/encodec/ablations/ppg/mesa_new",
+        "--datasets", "mesa bwh",
+        "--modality", "ppg"
+      ]
+    },
+    {
+      "name": "Debug code generation",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/encodec/inference.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "args": [
+        "--model_dir", "ppg/mesa_new/20250804_010937",
+        "--datasets", "mesa", "bwh", "mgh2",
+        "--do_code_generation", "true",
+        "--do_token_distribution", "false",
+        "--resume", "true"
+      ]
+    },
+  ]
+}

@@ -14,7 +14,7 @@ class BreathingSpectrogram(nn.Module):
         device='cuda'
     ):
         """
-        Does NOT preserve phase
+        Does NOT preserve phase within the window
             can arrange into time/frequency visual
             Not sure if the log scaling is necessary because we are not dealing with perceptual hearing
         """
@@ -60,7 +60,7 @@ class BreathingSpectrogram(nn.Module):
             window=self.window,
             center=False,
             return_complex=True
-        )
+        ) # (batch_size, n_fft//2+1, num_frames)
 
         # Normalize the STFT
         normalization_factor = self.window.sum()
@@ -127,7 +127,7 @@ class ReconstructionLoss(nn.Module):
 
     def forward(self, x, x_hat):
         # Compute spectrograms
-        S_x = self.spectrogram(x)
+        S_x = self.spectrogram(x) # (batch_size, n_freq_bins, num_frames)
         S_x_hat = self.spectrogram(x_hat)
 
         # take the argmax of the S_x

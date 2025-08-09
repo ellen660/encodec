@@ -1,0 +1,134 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["exp_details", "common", "optimization", "dataset", "loss", "spectrogram_loss", "model", "discrim", "distributed"],
+  "properties": {
+    "exp_details": {
+      "type": "object",
+      "required": ["name", "description"],
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" }
+      }
+    },
+    "common": {
+      "type": "object",
+      "properties": {
+        "log_every": { "type": "integer" },
+        "save_every": { "type": "integer" },
+        "test_every": { "type": "integer" },
+        "max_epoch": { "type": "integer" },
+        "seed": { "type": "integer" },
+        "gradient_clipping": { "type": "boolean" },
+        "gradient_clipping_value": { "type": "number" },
+        "num_workers": { "type": "integer" },
+        "debug": { "type": "boolean" }
+      },
+      "required": ["log_every", "save_every", "test_every", "max_epoch", "seed"]
+    },
+    "optimization": {
+      "type": "object",
+      "properties": {
+        "lr": { "type": "number" },
+        "batch_size": { "type": "integer" },
+        "beta1": { "type": "number" },
+        "beta2": { "type": "number" },
+        "warmup_epoch": { "type": "integer" }
+      },
+      "required": ["lr", "batch_size", "beta1", "beta2", "warmup_epoch"]
+    },
+    "dataset": {
+      "type": "object",
+      "properties": {
+        "max_length": { "type": "integer" },
+        "external": { "type": "boolean" },
+        "cv": { "type": "integer" },
+        "datasets": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "mode":  {"type": "string"}
+      },
+      "required": ["max_length", "external", "cv", "datasets", "mode"]
+    },
+    "loss": {
+      "type": "object",
+      "properties": {
+        "weight_l1": { "type": "number" },
+        "weight_l2": { "type": "number" },
+        "weight_commit": { "type": "number" },
+        "weight_freq": { "type": "number" },
+        "weight_g": { "type": "number" },
+        "weight_feat": { "type": "number" },
+        "commit_start_epoch": { "type": "integer" }
+      },
+      "required": ["weight_l1", "weight_l2", "weight_commit", "weight_freq", "weight_g", "weight_feat", "commit_start_epoch"]
+    },
+    "spectrogram_loss": {
+      "type": "object",
+      "properties": {
+        "alpha": { "type": "number" },
+        "bandwidth": { "type": ["number", "null"] },
+        "n_fft": { "type": "integer" },
+        "hop_length": { "type": "integer" },
+        "win_length": { "type": "integer" }
+      },
+      "required": ["alpha", "bandwidth", "n_fft", "hop_length", "win_length"]
+    },
+    "model": {
+      "type": "object",
+      "properties": {
+        "ratios": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "bins": { "type": "integer" },
+        "dimension": { "type": "integer" },
+        "target_bandwidths": {
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "audio_normalize": { "type": "boolean" },
+        "causal": { "type": "boolean" },
+        "norm": { "type": "string" },
+        "segment": { "type": ["string", "null"] },
+        "name": { "type": "string" },
+        "sample_rate": { "type": "integer" },
+        "channels": { "type": "integer" },
+        "discrim": { "type": "boolean" }
+      },
+      "required": ["ratios", "bins", "dimension", "target_bandwidths", "audio_normalize", "causal", "norm", "segment", "name", "sample_rate", "channels", "discrim"]
+    },
+    "discrim": {
+      "type": "object",
+      "properties": {
+        "train_discriminator": { "type": "boolean" },
+        "train_discriminator_start_epoch": { "type": "integer" },
+        "train_discriminator_prob": { "type": "number" },
+        "disc_hop_lengths": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "disc_win_lengths": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "disc_n_ffts": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "filters": { "type": "integer" }
+      },
+      "required": ["train_discriminator", "train_discriminator_start_epoch", "train_discriminator_prob", "disc_hop_lengths", "disc_win_lengths", "disc_n_ffts", "filters"]
+    },
+    "distributed": {
+      "type": "object",
+      "properties": {
+        "data_parallel": { "type": "boolean" },
+        "world_size": { "type": "integer" }
+      },
+      "required": ["data_parallel", "world_size"]
+    }
+  },
+  "additionalProperties": false
+}
