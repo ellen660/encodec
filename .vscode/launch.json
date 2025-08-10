@@ -10,29 +10,31 @@
       "justMyCode": true,
       "env": {
         "PYTHONPATH": "${workspaceFolder}",
-        "CUDA_VISIBLE_DEVICES": "7"
       },
       "args": [
         "--exp_name", "baseline_eeg",
-        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/eeg"
+        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/eeg",
       ]
     },
+    
     {
-      "name": "Debug visualization",
+      "name": "Debug distributed",
       "type": "python",
       "request": "launch",
-      "program": "${workspaceFolder}/encodec/new_visualize.py",
+      "module": "torch.distributed.run",
       "console": "integratedTerminal",
       "justMyCode": true,
       "env": {
         "PYTHONPATH": "${workspaceFolder}"
       },
       "args": [
-        "--model_path", "20250804_010937",
-        "--from_dir", "${workspaceFolder}/encodec/ablations/ppg/mesa_new",
-        "--datasets", "mesa bwh",
-        "--modality", "ppg"
-      ]
+        "--standalone", //standalone is good for automatically setting up DDP on a single node
+        "--nproc_per_node=1",
+        "encodec/trainer/init_config.py",
+        "--exp_name", "baseline_eeg",
+        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/eeg"
+      ],
+      "cwd": "${workspaceFolder}"
     },
     {
       "name": "Debug code generation",

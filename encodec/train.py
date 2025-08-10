@@ -47,14 +47,17 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
         disc.train()
     epoch_loss = 0
     start_data_time = time.time()
+    data_loading = 0
+    to_device = 0
+    forward_time = 0
 
     for i, (item, ds_id) in enumerate(tqdm(train_loader, desc=f"Training Epoch {epoch}", unit="batch")):
         x = item["x"]
-        data_loading_time = time.time() - start_data_time
+        data_loading +=  time.time() - start_data_time
         
-        to_device_time = time.time()
+        start_to_device = time.time()
         x = x.to(device)
-        to_device_time = time.time() - to_device_time
+        to_device += time.time() - start_to_device
         
         start_forward_time = time.time()
         x_hat, _, commit_loss, codebook_loss = model(x)
@@ -100,8 +103,7 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
             nn.utils.clip_grad_norm_(model.parameters(), config.common.gradient_clipping_value)
         optimizer.step()
         
-        forward_time = time.time() - start_forward_time
-        # tqdm.write(f"Batch {i}: Data loading time: {data_loading_time:.4f}s, To device time: {to_device_time:.4f}s, Forward pass time: {forward_time:.4f}s")
+        forward_time += time.time() - start_forward_time
         start_data_time = time.time()
 
         if train_discriminator:
@@ -156,6 +158,7 @@ def train_one_step(metrics, epoch, optimizer, optimizer_disc, scheduler, disc_sc
                 'Max Gradient': max_gradient
             }, epoch*len(train_loader) + i)
 
+    print(f"Epoch {epoch}: Data loading time: {data_loading/i:.4f}s, To device time: {to_device/i:.4f}s, Forward pass time: {forward_time/i:.4f}s")
     scheduler.step()  
     if config.discrim.train_discriminator and epoch >= config.discrim.train_discriminator_start_epoch:
         disc_scheduler.step()
@@ -439,11 +442,12 @@ def set_args():
     parser.add_argument("--exp_name", type=str, default="091224_l1")
     parser.add_argument("--resume_from", type=str, default="")
     parser.add_argument("--log_dir", type=str, default=None)
-    parser.add_argument("--debug", type=bool, default=False)
+    parser.add_argument("--debug", action="store_true", help="enable debug mode")
     return parser.parse_args()
 
 if __name__ == "__main__":
     args = set_args()
+
     user_name = os.getlogin()
 
     checkpoint_path = args.resume_from
@@ -474,7 +478,7 @@ if __name__ == "__main__":
     metrics = Metrics(metrics_args)
     
     # load dataset, split into train and val
-    _, train_loader = init_dataset(config=config, type="training", datasets=config.dataset.datasets, pin_memory=True, debug_training=args.debug)
+    _, train_loader, _ = init_dataset(config=config, type="training", datasets=config.dataset.datasets, pin_memory=True, debug_training=args.debug, ddp=False)
 
     # init model params, print model details, move model to device
     model, disc = init_model(config, train_discriminator = config.discrim.train_discriminator, save_path=log_dir)
@@ -503,12 +507,13 @@ if __name__ == "__main__":
         
     if config.distributed.data_parallel:
         model = nn.DataParallel(model)
-        disc = nn.DataParallel(disc)
+        if config.discrim.train_discriminator:
+            disc = nn.DataParallel(disc)
 
     for epoch in tqdm(range(start_epoch, config.common.max_epoch+2), desc="Epochs", unit="epoch"):
         train_one_step(metrics=metrics, epoch=epoch, optimizer=optimizer, optimizer_disc=optimizer_disc, scheduler=scheduler, disc_scheduler=disc_scheduler, model=model, disc=disc, train_loader=train_loader, config=config, writer=writer, freq_loss=freq_loss)
         if epoch % config.common.test_every == 1:
-            test(metrics, epoch,model,disc, train_loader, config, writer, freq_loss=freq_loss, log_dir=log_dir)
+            test(metrics=metrics, epoch=epoch,model=model,disc=disc, val_loader=train_loader, config=config, writer=writer, freq_loss=freq_loss, log_dir=log_dir)
         # save checkpoint and epoch
         if epoch % config.common.save_every == 1:
             save_checkpoint(model=model, optimizer=optimizer, scheduler=scheduler, epoch=epoch, path=f"{log_dir}/model.pth")
