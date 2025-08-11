@@ -1,5 +1,4 @@
 from clean_model import EncodecModel
-from msstftd import MultiScaleSTFTDiscriminator
 
 import torch
 import torch.distributed as dist
@@ -7,7 +6,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from utils import set_random_seed, print_model_details
 from typing import Tuple, Optional
 
-def init_model(config, train_discriminator: bool, save_path: str | None) -> Tuple[EncodecModel, Optional[MultiScaleSTFTDiscriminator]]:
+def init_model(config, train_discriminator: bool, save_path: str | None) -> Tuple[EncodecModel, None] :
     model = EncodecModel._get_model(
         config.model.target_bandwidths, 
         config.model.sample_rate, 
@@ -19,17 +18,7 @@ def init_model(config, train_discriminator: bool, save_path: str | None) -> Tupl
         bins=config.model.bins,
         dimension=config.model.dimension,
     )
-    if train_discriminator:
-        disc_model = MultiScaleSTFTDiscriminator(
-            in_channels=config.model.channels,
-            out_channels=config.model.channels,
-            filters=config.discrim.filters,
-            hop_lengths=config.discrim.disc_hop_lengths,
-            win_lengths=config.discrim.disc_win_lengths,
-            n_ffts=config.discrim.disc_n_ffts,
-        )
-    else:
-        disc_model = None
+    disc_model = None
 
     # log model, disc model parameters and train mode
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
@@ -37,12 +26,6 @@ def init_model(config, train_discriminator: bool, save_path: str | None) -> Tupl
     print(f"Model Total number of parameters: {total_params}")
     if save_path:
         print_model_details(model=model, log_path=f"{save_path}/model.txt")
-    if train_discriminator:
-        print(f"disc model train mode :{disc_model.training}")
-        total_params = sum(p.numel() for p in disc_model.parameters())
-        print(f"Discriminator Total number of parameters: {total_params}")
-        if save_path:
-            print_model_details(model=disc_model, log_path=f"{save_path}/disc.txt")
     
     return model, disc_model
 

@@ -2,7 +2,7 @@ from clean_model import EncodecModel
 # from ppg import init_dataset
 from baseline_data import init_dataset
 from losses import total_loss, disc_loss, Metrics, MetricsArgs, LinearWarmupCosineAnnealingLR, WarmupScheduler, ReconstructionLoss
-from msstftd import MultiScaleSTFTDiscriminator
+# from msstftd import MultiScaleSTFTDiscriminator
 
 import torch
 import torch.optim as optim
@@ -356,7 +356,7 @@ def init_logger(log_dir, resume=False):
         writer = SummaryWriter(log_dir=log_dir)
     return writer
 
-def init_model(config, train_discriminator: bool, save_path: str | None) -> Tuple[EncodecModel, Optional[MultiScaleSTFTDiscriminator]]:
+def init_model(config, train_discriminator: bool, save_path: str | None) -> Tuple[EncodecModel, None]:
     model = EncodecModel._get_model(
         config.model.target_bandwidths, 
         config.model.sample_rate, 
@@ -368,17 +368,17 @@ def init_model(config, train_discriminator: bool, save_path: str | None) -> Tupl
         bins=config.model.bins,
         dimension=config.model.dimension,
     )
-    if train_discriminator:
-        disc_model = MultiScaleSTFTDiscriminator(
-            in_channels=config.model.channels,
-            out_channels=config.model.channels,
-            filters=config.discrim.filters,
-            hop_lengths=config.discrim.disc_hop_lengths,
-            win_lengths=config.discrim.disc_win_lengths,
-            n_ffts=config.discrim.disc_n_ffts,
-        )
-    else:
-        disc_model = None
+    # if train_discriminator:
+    #     disc_model = MultiScaleSTFTDiscriminator(
+    #         in_channels=config.model.channels,
+    #         out_channels=config.model.channels,
+    #         filters=config.discrim.filters,
+    #         hop_lengths=config.discrim.disc_hop_lengths,
+    #         win_lengths=config.discrim.disc_win_lengths,
+    #         n_ffts=config.discrim.disc_n_ffts,
+    #     )
+    # else:
+    disc_model = None
 
     # log model, disc model parameters and train mode
     print(f"model train mode :{model.training} | quantizer train mode :{model.quantizer.training} ")
