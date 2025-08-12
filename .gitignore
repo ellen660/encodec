@@ -53,3 +53,5 @@ tensorboard
 visualizations
 predictions
 ablations
+**/.ipynb_checkpoints/
+

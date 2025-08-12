@@ -400,12 +400,12 @@ def get_code_distribution_ppg(model, model_name, test_datasets, datasets, channe
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--user_dir", type=str, default="/data/scratch/ellen660/encodec/encodec/ablations")
-    parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes")
-    parser.add_argument("--model_dir", type=str, default="ppg/mesa_new/20250806_1616")
+    parser.add_argument("--user_dir", type=str, default="/home/ellen660/encodec/encodec/ablations/baseline")
+    parser.add_argument("--save_dir", type=str, default="/nobackup/users/ellen660/encodec_codes/baseline")
+    parser.add_argument("--model_dir", type=str, default="resp/20250811_2355")
     parser.add_argument("--datasets",type=str, nargs='+', default=["mesa", "bwh", "mgh2"],help="List of dataset names (e.g., --datasets mesa bwh mgh2)")
     parser.add_argument("--resume", type=bool, default=True)
-    parser.add_argument("--do_channel", type=List[str], default=["ppg"])
+    parser.add_argument("--do_channel", type=List[str], default=["chest"])
     parser.add_argument("--do_code_generation", type=bool, default=True)
     parser.add_argument("--do_token_distribution", type=bool, default=False)
         
@@ -440,7 +440,7 @@ if __name__ == "__main__":
 
     #Code Generation
     if args.do_code_generation:
-        inference_dataset = init_dataset(config=config, type="inference", datasets=args.datasets)
+        inference_dataset = init_dataset(config=config, type="inference", datasets=args.datasets, ddp=False, pin_memory=True)
         done = set()
         if resume:
             done = {
