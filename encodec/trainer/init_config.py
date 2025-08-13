@@ -153,8 +153,7 @@ if __name__ == "__main__":
     # Load checkpoint if resuming
     start_epoch = 1
     if args.resume_from:
-        load_checkpoint(args.resume_from, model, optimizer, scheduler, local_rank=local_rank)
-    
+        start_epoch = load_checkpoint(args.resume_from, model, optimizer, scheduler, local_rank=local_rank)
     
     freq_loss = ReconstructionLoss(alpha=config.spectrogram_loss.alpha, bandwidth=config.spectrogram_loss.bandwidth, sampling_rate=config.model.sample_rate, n_fft=config.spectrogram_loss.n_fft*config.model.sample_rate, hop_length=config.spectrogram_loss.hop_length*config.model.sample_rate, win_length=config.spectrogram_loss.win_length*config.model.sample_rate, device=device)
 
@@ -163,7 +162,7 @@ if __name__ == "__main__":
     metrics = Metrics(metrics_args)
         
         
-    for epoch in range(start_epoch, config.common.max_epoch + 1):
+    for epoch in range(start_epoch, config.common.max_epoch + 2):
         # Important: update sampler so DistributedSampler reshuffles globally each epoch
         if sampler is not None:
             sampler.set_epoch(epoch)

@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import torch.distributed as dist
 import random
+import os
 
 # Add the B directory to sys.path
 sys.path.append(str(Path(__file__).resolve().parents[3] / 'time_series_foundation_models/dataloaders'))
@@ -36,8 +37,9 @@ class UniversalWrapper(BaseDataset):  #
             return super().__len__()
     
     def visualize_sample(self, save_dir: str, num_samples: int = 5):
+        os.makedirs(f'{save_dir}/{self.args.mode}', exist_ok=True)
         for i in range(num_samples):
-            data, label = self.__getitem__(0)
+            data, label = self.__getitem__(i)
             x = data["x"]
             fig, axs = plt.subplots(1, 2, figsize=(12, 4))  # 1 row, 2 columns
 
@@ -57,6 +59,7 @@ class UniversalWrapper(BaseDataset):  #
             axs[1].plot(signal_cpu[ : five_seconds])
             axs[1].set_title("Original Signal 5 seconds")
             axs[0].set_ylim(-6, 6)  # Set y-limits here
+            axs[1].set_ylim(-6, 6)  # Set y-limits here
 
             plt.tight_layout()
             fig.savefig(f'{save_dir}/{self.args.mode}/{label}_{data["filename"]}.png')
@@ -148,7 +151,10 @@ def init_dataset(
     # NOTE: If you pass sampler, set shuffle=False (PyTorch will error otherwise).
     # Build worker_init_fn seed base — use a global base seed (e.g., from config or time)
     base_seed = config.common.seed
-    worker_init = make_worker_init_fn(base_seed)
+    if type == "training":
+        worker_init = make_worker_init_fn(base_seed)
+    else:
+        worker_init = None
 
     data_loader = DataLoader(
         dataset=combined_dataset,

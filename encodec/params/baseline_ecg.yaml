@@ -1,0 +1,75 @@
+exp_details:
+  name: mesa_baseline_ecg
+  description: 6_seconds_6_codebooks
+common:
+  log_every: 5
+  save_every: 5
+  test_every: 10
+  max_epoch: 100
+  seed: 42
+  gradient_clipping: false
+  gradient_clipping_value: 0.1
+  num_workers: 4
+  debug: false
+optimization:
+  lr: 0.0001
+  batch_size: 4
+  beta1: 0.8
+  beta2: 0.9
+  warmup_epoch: 10
+dataset:
+  max_length: 7200
+  external: false
+  cv: 0
+  datasets: [mesa, mgh2, bwh]
+  mode: ecg
+loss:
+  weight_l1: 1
+  weight_l2: 0.01
+  weight_commit: 0.25
+  weight_freq: 0.25
+  weight_g: 3
+  weight_feat: 3
+  commit_start_epoch: 30
+spectrogram_loss:
+  alpha: 0.01
+  bandwidth: null
+  n_fft: 64
+  hop_length: 5
+  win_length: 30
+model:
+  ratios:
+    - 6
+    - 4
+    - 4
+    - 4
+    - 2
+  bins: 1024
+  dimension: 256
+  target_bandwidths:
+    - 0.06
+  audio_normalize: false
+  causal: true
+  norm: layer_norm
+  segment: None
+  name: my_encodec
+  sample_rate: 128
+  channels: 1
+  discrim: false
+discrim:
+  train_discriminator: false
+  train_discriminator_start_epoch: 0
+  train_discriminator_prob: 0
+  disc_hop_lengths:
+    - 20
+    - 128
+  disc_win_lengths:
+    - 100
+    - 512
+  disc_n_ffts:
+    - 1024
+    - 1024
+  filters: 32
+distributed:
+  data_parallel: true
+  world_size: 8

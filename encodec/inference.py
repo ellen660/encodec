@@ -400,12 +400,12 @@ def get_code_distribution_ppg(model, model_name, test_datasets, datasets, channe
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--user_dir", type=str, default="/home/ellen660/encodec/encodec/ablations/baseline")
-    parser.add_argument("--save_dir", type=str, default="/nobackup/users/ellen660/encodec_codes/baseline")
+    parser.add_argument("--user_dir", type=str, default="/data/netmit/sleep_lab/ML4H/encodec_models")
+    parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes")
     parser.add_argument("--model_dir", type=str, default="resp/20250811_2355")
     parser.add_argument("--datasets",type=str, nargs='+', default=["mesa", "bwh", "mgh2"],help="List of dataset names (e.g., --datasets mesa bwh mgh2)")
     parser.add_argument("--resume", type=bool, default=True)
-    parser.add_argument("--do_channel", type=List[str], default=["chest"])
+    # parser.add_argument("--do_channel", type=List[str], default=["chest"])
     parser.add_argument("--do_code_generation", type=bool, default=True)
     parser.add_argument("--do_token_distribution", type=bool, default=False)
         
@@ -416,7 +416,7 @@ if __name__ == "__main__":
     log_dir = os.path.join(args.user_dir, args.model_dir)
     datasets = args.datasets
     resume = args.resume
-    do_channel = args.do_channel
+    # do_channel = args.do_channel
 
     # Load the YAML file
     _, config = load_config(filepath=f'{log_dir}/config.yaml', schemapath=None)
@@ -426,7 +426,7 @@ if __name__ == "__main__":
     
     #Initialize the model
     model, _ = init_model(config=config, train_discriminator=False, save_path=None)
-    device = torch.device("cuda:6")
+    device = torch.device("cuda:2")
     model = model.to(device)
     epoch = load_checkpoint(model=model, optimizer=None, scheduler=None, path=f"{log_dir}/model.pth", device=device)
     model.eval()    
@@ -440,7 +440,7 @@ if __name__ == "__main__":
 
     #Code Generation
     if args.do_code_generation:
-        inference_dataset = init_dataset(config=config, type="inference", datasets=args.datasets, ddp=False, pin_memory=True)
+        inference_dataset, _, _ = init_dataset(config=config, type="inference", datasets=args.datasets, ddp=False, pin_memory=True)
         done = set()
         if resume:
             done = {
