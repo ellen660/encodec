@@ -23,7 +23,7 @@ import torch
 import torch.distributed as dist
 import torch.optim as optim
 import yaml
-from losses import LinearWarmupCosineAnnealingLR, Metrics, MetricsArgs, ReconstructionLosses
+from encodec.losses import LinearWarmupCosineAnnealingLR, Metrics, MetricsArgs, ReconstructionLosses
 from torch.distributed import destroy_process_group
 from torch.utils.tensorboard import SummaryWriter
 
