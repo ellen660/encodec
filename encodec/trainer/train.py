@@ -4,7 +4,9 @@ import time
 import torch
 from losses import disc_loss, total_loss
 from tqdm import tqdm
-
+import numpy as np
+import matplotlib.pyplot as plt
+import math
 
 def train_one_step(
     metrics,
@@ -21,6 +23,7 @@ def train_one_step(
     freq_loss,
     device,
     rank,
+    log_dir
 ):
     """
     metrics: your metrics object
@@ -48,6 +51,7 @@ def train_one_step(
     data_loading = 0
     to_device = 0
     forward_time = 0
+    all_codes = []
 
     for i, (item, ds_id) in enumerate(
         tqdm(
@@ -65,7 +69,7 @@ def train_one_step(
         to_device += time.time() - start_to_device
 
         start_forward_time = time.time()
-        x_hat, _, commit_loss, codebook_loss = model(x)
+        x_hat, codes, commit_loss, codebook_loss = model(x)
 
         train_generator = config.discrim.train_discriminator and epoch >= config.discrim.train_discriminator_start_epoch
 
@@ -121,7 +125,7 @@ def train_one_step(
                 torch.nn.utils.clip_grad_norm_(disc.parameters(), config.common.gradient_clipping_value)
             optimizer_disc.step()
 
-            if epoch % config.common.log_every == 0 and rank == 0:
+            if epoch % config.common.log_every == 1 and rank == 0:
                 metrics.fill_metrics(
                     {"Loss Discriminator": loss_disc.item()},
                     epoch * len(train_loader) + i,
@@ -145,7 +149,8 @@ def train_one_step(
                     epoch * len(train_loader) + i,
                 )
 
-        if epoch % config.common.log_every == 0 and rank == 0:
+        if epoch % config.common.log_every == 1 and rank == 0:
+            all_codes.append(codes)
             epoch_loss += loss.item()
             metrics.fill_metrics(
                 {
@@ -179,7 +184,11 @@ def train_one_step(
                     max_gradient = max(max_gradient, param.grad.abs().max().item())
 
             metrics.fill_metrics({"Max Gradient": max_gradient}, epoch * len(train_loader) + i)
-
+            plot_codebook(all_codes=all_codes, epoch=epoch, config=config, writer=writer)
+            if i ==0:
+                plot_reconstruction(x=x, x_hat=x_hat, freq_loss_dict=freq_loss_dict, log_dir=log_dir, epoch=epoch, config=config)
+            
+                
     if rank == 0:
         print(
             f"Epoch {epoch}: Data loading time: {data_loading/i:.4f}s, To device time: {to_device/i:.4f}s, Forward pass time: {forward_time/i:.4f}s"
@@ -189,7 +198,7 @@ def train_one_step(
     if config.discrim.train_discriminator and epoch >= config.discrim.train_discriminator_start_epoch:
         disc_scheduler.step()
 
-    if epoch % config.common.log_every == 0 and rank == 0:
+    if epoch % config.common.log_every == 1 and rank == 0:
         metrics_dict = metrics.compute_and_log_metrics()
         metrics_dict["Learning Rate"] = optimizer.param_groups[0]["lr"]
         loss_per_epoch = epoch_loss / len(train_loader)
@@ -209,3 +218,86 @@ def logger(writer, metrics, phase, epoch_index):
             # bp()
         writer.add_scalar("%s/%s" % (phase, key), value, epoch_index)
     writer.flush()
+
+def plot_reconstruction(x, x_hat, freq_loss_dict, log_dir, epoch, config):
+    with torch.no_grad():
+        S_x = freq_loss_dict["S_x"][:, :freq_loss_dict["S_x"].size(1)//2, :]
+        S_x_hat = freq_loss_dict["S_x_hat"][:, :freq_loss_dict["S_x_hat"].size(1)//2, :]
+        min_spec_val = min(S_x.min(), S_x_hat.min())
+        max_spec_val = max(S_x.max(), S_x_hat.max())
+
+        fs = config.model.sample_rate
+        start_idx = 10000
+        five_seconds = fs * 5
+        thirty_seconds = fs * 30
+
+        x0 = x[0].detach().cpu().numpy().squeeze()
+        xhat0 = x_hat[0].detach().cpu().numpy().squeeze()
+
+        x_time = np.arange(x0.shape[0])
+
+        fig, axs = plt.subplots(2, 3, figsize=(20, 10))
+
+        # Five seconds
+        axs[0, 0].plot(x_time[start_idx : start_idx + five_seconds], x0[start_idx : start_idx + five_seconds])
+        axs[0, 0].set_title('Original Five seconds')
+        axs[0, 0].set_ylim(-6, 6)
+
+        axs[1, 0].plot(x_time[start_idx : start_idx + five_seconds], xhat0[start_idx : start_idx + five_seconds])
+        axs[1, 0].set_title('Reconstructed Five seconds')
+        axs[1, 0].set_ylim(-6, 6)
+
+        # Thirty seconds
+        axs[0, 1].plot(x_time[start_idx : start_idx + thirty_seconds], x0[start_idx : start_idx + thirty_seconds])
+        axs[0, 1].set_title('Original Thirty seconds')
+        axs[0, 1].set_ylim(-6, 6)
+
+        axs[1, 1].plot(x_time[start_idx : start_idx + thirty_seconds], xhat0[start_idx : start_idx + thirty_seconds])
+        axs[1, 1].set_title('Reconstructed Thirty seconds')
+        axs[1, 1].set_ylim(-6, 6)
+
+        # Spectrograms
+        extent = [0, x0.shape[0], 0, S_x.size(1)]
+        axs[0, 2].imshow(S_x[0].detach().cpu().numpy(), cmap='jet', aspect='auto',
+                         extent=extent, vmin=min_spec_val, vmax=max_spec_val)
+        axs[0, 2].invert_yaxis()
+        axs[0, 2].set_title('Original Spectrogram')
+
+        axs[1, 2].imshow(S_x_hat[0].detach().cpu().numpy(), cmap='jet', aspect='auto',
+                         extent=extent, vmin=min_spec_val, vmax=max_spec_val)
+        axs[1, 2].invert_yaxis()
+        axs[1, 2].set_title('Reconstructed Spectrogram')
+
+        fig.tight_layout()
+        fig.savefig(f"{log_dir}/{epoch}.png")
+        plt.close(fig)
+
+    
+def plot_codebook(all_codes, writer, epoch, config):
+    all_codes = torch.cat(all_codes, dim=0) # B, num_codebooks, T
+    all_codes = torch.permute(all_codes, (1, 0, 2))
+
+    # flatten the last two dimensions
+    all_codes = all_codes.reshape(all_codes.shape[0], -1)
+
+    # log the distribution of codes. one distribution for each codebook
+    entropies = []
+    for i in range(all_codes.shape[0]):
+        writer.add_histogram(f'Codes/Codebook {i}', all_codes[i], epoch)
+        #calculate entropy
+        _, counts = torch.unique(all_codes[i], return_counts=True)
+        probabilities = counts.float() / counts.sum()
+        entropy = -(probabilities * probabilities.log2()).sum()
+        entropies.append(entropy.item())
+    #create a graph of entropy
+    fig, ax = plt.subplots()
+    x_axis = np.arange(0, len(entropies))
+    ax.plot(x_axis, entropies)
+    ax.set_title("Entropy of Codebooks")
+    ax.set_xlabel("Codebook index")
+    ax.set_ylabel("Entropy")
+    ax.set_ylim(0, math.log2(config.model.bins))
+    fig.tight_layout()
+    writer.add_figure(f"Entropy/{epoch}", fig)
+    plt.close(fig)
+
