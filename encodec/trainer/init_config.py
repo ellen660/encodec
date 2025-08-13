@@ -209,6 +209,7 @@ if __name__ == "__main__":
             freq_loss=freq_loss,
             device=device,
             rank=rank,
+            log_dir=log_dir
         )
 
         # if epoch % config.common.test_every == 1 and rank == 0:
