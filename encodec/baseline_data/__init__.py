@@ -124,7 +124,7 @@ def init_dataset(
     ddp: bool = False,
     pin_memory: bool = True,
     debug_training: bool = False,
-) -> Tuple[ConcatDataset, DataLoader, DistributedSampler | None]:
+) -> tuple[ConcatDataset, DataLoader, DistributedSampler | None]:
     """
     from time series univeral loader
     """

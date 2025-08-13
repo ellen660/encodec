@@ -53,5 +53,23 @@
         "--resume", "true"
       ]
     },
+    {
+      "name": "Debug evaluation",
+      "type": "python",
+      "request": "launch",
+      "console": "integratedTerminal",
+      "module": "torch.distributed.run",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
+      "args": [
+        "--standalone",
+        "--nproc_per_node=1",
+        "${workspaceFolder}/encodec/trainer/evaluate.py",
+        "--datasets", "bwh", "mgh2", "mesa"
+      ],
+      "cwd": "${workspaceFolder}"
+    },
   ]
 }

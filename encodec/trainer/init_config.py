@@ -24,7 +24,7 @@ import torch.distributed as dist
 import torch.optim as optim
 import yaml
 from losses import LinearWarmupCosineAnnealingLR, Metrics, MetricsArgs, ReconstructionLosses
-from torch.distributed import destroy_process_group, init_process_group
+from torch.distributed import destroy_process_group
 from torch.utils.tensorboard import SummaryWriter
 
 from encodec.baseline_data import init_dataset
@@ -45,7 +45,7 @@ class ConfigNamespace:
 
 # Load the YAML file and convert to ConfigNamespace
 def load_config(filepath: str, schemapath: str | None = None):
-    with open(filepath, "r") as file:
+    with open(filepath) as file:
         config_dict = yaml.safe_load(file)
     if schemapath:
         with open(schemapath) as f:
@@ -63,15 +63,6 @@ def init_logger(log_dir, resume=False):
     else:
         writer = SummaryWriter(log_dir=log_dir)
     return writer
-
-
-def ddp_setup():
-    init_process_group(backend="nccl")
-    torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
-
-
-def ddp_cleanup():
-    destroy_process_group()
 
 
 def setup_device():
@@ -93,7 +84,7 @@ def setup_device():
 
 def cleanup():
     torch.cuda.empty_cache()
-    ddp_cleanup()
+    destroy_process_group()
 
 
 def set_args():

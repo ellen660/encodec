@@ -1,4 +1,3 @@
-from typing import Tuple
 
 import torch
 import torch.distributed as dist
@@ -7,7 +6,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from utils import print_model_details
 
 
-def init_model(config, train_discriminator: bool, save_path: str | None) -> Tuple[EncodecModel, None]:
+def init_model(config, train_discriminator: bool, save_path: str | None) -> tuple[EncodecModel, None]:
     model = EncodecModel._get_model(
         config.model.target_bandwidths,
         config.model.sample_rate,
@@ -69,7 +68,7 @@ def load_checkpoint(path, model, optimizer=None, scheduler=None, local_rank=0):
             optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if scheduler is not None:
             scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-            epoch = checkpoint["epoch"] + 1  # Resume from next epoch
+        epoch = checkpoint["epoch"] + 1  # Resume from next epoch
     else:
         checkpoint = None
         epoch = 0  # placeholder

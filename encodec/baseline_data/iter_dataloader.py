@@ -1,6 +1,6 @@
 import sys
 from pathlib import Path
-from typing import Literal, Tuple
+from typing import Literal
 
 import numpy as np
 import torch
@@ -108,7 +108,7 @@ def init_iter_dataset(
     ddp=False,
     pin_memory=True,
     debug_training=False,
-) -> Tuple[IterableDataset, DataLoader]:
+) -> tuple[IterableDataset, DataLoader]:
     """
     Initialize iterable datasets for training or inference.
     """
