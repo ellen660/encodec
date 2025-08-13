@@ -1,11 +1,14 @@
 import time
-from torch.utils.data import DataLoader
-from encodec.baseline_data import init_dataset
-from encodec.baseline_data.iter_dataloader import init_iter_dataset
-from train import load_config
-from tqdm import tqdm
 
-config_dict, config = load_config(filepath=f"encodec/params/baseline_eeg.yaml", schemapath=f"encodec/params/schema.json")
+from tqdm import tqdm
+from train import load_config
+
+from encodec.baseline_data.iter_dataloader import init_iter_dataset
+
+config_dict, config = load_config(
+    filepath="encodec/params/baseline_eeg.yaml",
+    schemapath="encodec/params/schema.json",
+)
 
 # def measure_loading_time(num_workers, pin):
 #     _, loader = init_dataset(config=config, type="training", datasets=config.dataset.datasets, pin_memory=pin) #type: ignore
@@ -21,7 +24,8 @@ config_dict, config = load_config(filepath=f"encodec/params/baseline_eeg.yaml", 
 #     end = time.time()
 #     avg_time_per_batch = (end - start) / len(loader)
 #     tqdm.write(f"second time: {avg_time_per_batch:.4f}s")
-    
+
+
 def measure_loading_time_iterator(num_workers, pin):
     # Create loader
     _, loader = init_iter_dataset(
@@ -29,7 +33,7 @@ def measure_loading_time_iterator(num_workers, pin):
         type="training",
         datasets=config.dataset.datasets,
         pin_memory=pin,
-        debug_training=True
+        debug_training=True,
     )
 
     def time_one_epoch():
@@ -51,16 +55,16 @@ def measure_loading_time_iterator(num_workers, pin):
         type="training",
         datasets=config.dataset.datasets,
         pin_memory=pin,
-        debug_training=True
+        debug_training=True,
     )
 
     # Second pass
     time_one_epoch()
 
-    
+
 # Quick benchmark
 for pin in [False, True]:
-    measure_loading_time_iterator(num_workers=config.common.num_workers, pin=pin) #type: ignore
+    measure_loading_time_iterator(num_workers=config.common.num_workers, pin=pin)  # type: ignore
 
 # Example usage:
 for workers in [0, 1, 2, 4, 8, 12, 16]:

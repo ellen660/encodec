@@ -19,8 +19,6 @@ dependencies = [
     "torchaudio (>=2.7.1,<3.0.0)",
     "torchmetrics (>=1.8.0,<2.0.0)",
     "tensorboard (>=2.20.0,<3.0.0)",
-    "isort (>=6.0.1,<7.0.0)",
-    "black (>=25.1.0,<26.0.0)",
     "jsonschema (>=4.25.0,<5.0.0)"
 ]
 
@@ -30,5 +28,28 @@ requires = ["poetry-core>=2.0.0,<3.0.0"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.group.dev.dependencies]
-ipdb = "^0.13.13"
+ruff = "^0.12.7"
+black = "^25.1.0"
+isort = "^6.0.1"
+pyright = "^1.1.403"
 
+[tool.black]
+line-length = 120
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+line_length = 120
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-select = ["I", "F", "E", "W", "UP", "NPY"]
+exclude = ["venv", ".venv", "build", "dist"]
+
+[tool.pyright]
+include = ["src"]
+exclude = ["tests", ".venv"]
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = true

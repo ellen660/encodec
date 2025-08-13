@@ -1,24 +1,16 @@
-import torch
-from torch.utils.data import IterableDataset
-import numpy as np
-import random
-
-from torch.utils.data import DataLoader, ConcatDataset, Dataset
-import torch
 import sys
 from pathlib import Path
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data.sampler import RandomSampler
 from typing import Literal, Tuple
-import numpy as np
-import matplotlib.pyplot as plt
-import torch.distributed as dist
 
+import numpy as np
+import torch
+import torch.distributed as dist
+from torch.utils.data import DataLoader, IterableDataset
 
 # Add the B directory to sys.path
-sys.path.append(str(Path(__file__).resolve().parents[3] / 'time_series_foundation_models/dataloaders'))
-from iterator_dataloader import BaseIterableDataset, get_dist_info, seed_worker, is_dist_initialized #type: ignore
-from universal_loader import Object #type: ignore
+sys.path.append(str(Path(__file__).resolve().parents[3] / "time_series_foundation_models/dataloaders"))
+from iterator_dataloader import BaseIterableDataset, get_dist_info, is_dist_initialized, seed_worker  # type: ignore
+from universal_loader import Object  # type: ignore
 
 
 # ---------- Wrapper that validates output and enforces compression_ratio ----------
@@ -76,18 +68,27 @@ class UniversalIterableWrapper(IterableDataset):
                 sys.exit(1)
             data_tensor = data_tensor[:new_length].unsqueeze(0)  # (1, new_length)
 
-            if data_tensor is None or label_tensor.get("filename", None) is None or label_tensor.get("dataset", None) is None:
+            if (
+                data_tensor is None
+                or label_tensor.get("filename", None) is None
+                or label_tensor.get("dataset", None) is None
+            ):
                 print("found bad file ")
                 sys.exit(1)
 
-            yield {"x": data_tensor, "filename": label_tensor["filename"]}, label_tensor["dataset"]
+            yield {
+                "x": data_tensor,
+                "filename": label_tensor["filename"],
+            }, label_tensor["dataset"]
 
             # sample_count += 1
             # if getattr(self.args, "debug", False) and sample_count > 10000:
             #     break
 
+
 class ConcatIterableDataset(IterableDataset):
     """Simple concatenation for multiple IterableDatasets."""
+
     def __init__(self, *datasets):
         super().__init__()
         self.datasets = datasets
@@ -95,7 +96,7 @@ class ConcatIterableDataset(IterableDataset):
     def __iter__(self):
         for ds in self.datasets:
             yield from iter(ds)
-            
+
     def __len__(self):
         return sum(len(ds.inner.all_files) for ds in self.datasets)
 
@@ -106,15 +107,14 @@ def init_iter_dataset(
     datasets: list[str],
     ddp=False,
     pin_memory=True,
-    debug_training=False
+    debug_training=False,
 ) -> Tuple[IterableDataset, DataLoader]:
     """
     Initialize iterable datasets for training or inference.
     """
     cv = config.dataset.cv
     compression_ratio = int(np.prod(config.model.ratios))
-    
-    
+
     if type == "training":
         exclude_dataset = "mesa" if config.dataset.external else None
         seq_len = config.model.sample_rate * config.dataset.max_length
@@ -132,7 +132,7 @@ def init_iter_dataset(
         fold=cv,
         z_score=True,
         exclude_dataset=exclude_dataset,
-        debug=debug_training
+        debug=debug_training,
     )
 
     # Create iterable datasets
@@ -149,15 +149,17 @@ def init_iter_dataset(
     train_dataset.assert_output_once()
 
     # Make sure train & val file lists don't overlap
-    assert set(train_dataset.inner.all_files).isdisjoint(val_dataset.inner.all_files), \
-        "❌ Training and validation sets intersect!"
+    assert set(train_dataset.inner.all_files).isdisjoint(
+        val_dataset.inner.all_files
+    ), "❌ Training and validation sets intersect!"
     print("✅ No data leakage")
 
     # Combine into one iterable if training mode
     combined_dataset = ConcatIterableDataset(train_dataset, val_dataset)
-    print(f"Total number of files for {type}: "
-            f"{len(train_dataset.inner.all_files) + len(val_dataset.inner.all_files)}")
-    print(f'{len(combined_dataset)}')
+    print(
+        f"Total number of files for {type}: " f"{len(train_dataset.inner.all_files) + len(val_dataset.inner.all_files)}"
+    )
+    print(f"{len(combined_dataset)}")
     if is_dist_initialized():
         rank, world_size = dist.get_rank(), dist.get_world_size()
         base_worker_seed = config.common.seed + rank
@@ -177,6 +179,3 @@ def init_iter_dataset(
     )
 
     return combined_dataset, loader
-
-
-    

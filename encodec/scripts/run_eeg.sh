@@ -1,7 +1,7 @@
 #!/bin/bash
 
 set -e  # Exit on error
-
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 # Send email on error
 trap 'poetry run python encodec/notify_failure.py' ERR
 
@@ -18,7 +18,7 @@ ROOT_DIR=$(pwd)
 PYTHONPATH=$ROOT_DIR \
 poetry run python -m torch.distributed.run \
   --standalone \
-  --nproc_per_node=8 \
+  --nproc_per_node=4 \
   encodec/trainer/init_config.py \
   --exp_name baseline_eeg \
   --log_dir "$ROOT_DIR/encodec/ablations/baseline/eeg"

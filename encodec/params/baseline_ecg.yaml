@@ -34,7 +34,7 @@ loss:
 spectrogram_loss:
   alpha: 0.01
   bandwidth: null
-  n_fft: 64
+  n_fft: 2048
   hop_length: 5
   win_length: 30
 model:
