@@ -1,19 +1,21 @@
-from clean_model import EncodecModel
+from typing import Tuple
 
 import torch
 import torch.distributed as dist
+from clean_model import EncodecModel
 from torch.nn.parallel import DistributedDataParallel as DDP
-from utils import set_random_seed, print_model_details
-from typing import Tuple, Optional
+from utils import print_model_details
 
-def init_model(config, train_discriminator: bool, save_path: str | None) -> Tuple[EncodecModel, None] :
+
+def init_model(config, train_discriminator: bool, save_path: str | None) -> Tuple[EncodecModel, None]:
     model = EncodecModel._get_model(
-        config.model.target_bandwidths, 
-        config.model.sample_rate, 
+        config.model.target_bandwidths,
+        config.model.sample_rate,
         config.model.channels,
-        causal=config.model.causal, model_norm=config.model.norm, 
+        causal=config.model.causal,
+        model_norm=config.model.norm,
         # audio_normalize=config.model.audio_normalize,
-        segment=eval(config.model.segment), #name=config.model.name,
+        segment=eval(config.model.segment),  # name=config.model.name,
         ratios=config.model.ratios,
         bins=config.model.bins,
         dimension=config.model.dimension,
@@ -26,7 +28,7 @@ def init_model(config, train_discriminator: bool, save_path: str | None) -> Tupl
     print(f"Model Total number of parameters: {total_params}")
     if save_path:
         print_model_details(model=model, log_path=f"{save_path}/model.txt")
-    
+
     return model, disc_model
 
 
@@ -41,33 +43,36 @@ def save_checkpoint(model, optimizer, scheduler, epoch, path):
             state_dict = model.state_dict()
 
         checkpoint = {
-            'epoch': epoch,
-            'model_state_dict': state_dict,
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),
+            "epoch": epoch,
+            "model_state_dict": state_dict,
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
         }
         torch.save(checkpoint, path)
         print(f"Checkpoint saved at epoch {epoch} by rank 0")
+
 
 def load_checkpoint(path, model, optimizer=None, scheduler=None, local_rank=0):
     """
     Load checkpoint on rank 0, broadcast model weights to other ranks.
     Optionally load optimizer and scheduler state on rank 0.
     """
-    map_location = {'cuda:0': f'cuda:{local_rank}'}
+    map_location = {"cuda:0": f"cuda:{local_rank}"}
 
     if local_rank == 0:
         checkpoint = torch.load(path, map_location=map_location)
         if isinstance(model, torch.nn.parallel.DistributedDataParallel):
-            model.module.load_state_dict(checkpoint['model_state_dict'])
+            model.module.load_state_dict(checkpoint["model_state_dict"])
         else:
-            model.load_state_dict(checkpoint['model_state_dict'])
+            model.load_state_dict(checkpoint["model_state_dict"])
         if optimizer is not None:
-            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         if scheduler is not None:
-            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+            epoch = checkpoint["epoch"] + 1  # Resume from next epoch
     else:
         checkpoint = None
+        epoch = 0  # placeholder
 
     # Wait for rank 0 to finish loading
     dist.barrier()
@@ -76,10 +81,12 @@ def load_checkpoint(path, model, optimizer=None, scheduler=None, local_rank=0):
     for param in model.parameters():
         dist.broadcast(param.data, src=0)
 
-    # Optionally, broadcast optimizer and scheduler states if needed (usually not necessary)
-    # This requires custom serialization and is usually avoided
+    # Broadcast epoch so all ranks have the same value
+    epoch_tensor = torch.tensor([epoch], dtype=torch.int64, device=f"cuda:{local_rank}")
+    dist.broadcast(epoch_tensor, src=0)
+    epoch = epoch_tensor.item()
 
-    return checkpoint if local_rank == 0 else None
+    return epoch
 
 
 def wrap_model(model, local_rank):

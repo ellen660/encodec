@@ -1,14 +1,16 @@
 from dataclasses import dataclass
 import torch
 
+
 @dataclass
-class MetricsArgs():
+class MetricsArgs:
     datasets: list[str]
     device: torch.device
 
-class Metrics():
+
+class Metrics:
     def __init__(self, args: MetricsArgs):
-        self.args = args 
+        self.args = args
         self.datasets = args.datasets
         self.clear_metrics()
 
@@ -36,18 +38,16 @@ class Metrics():
             self.metrics_dict[f"Loss L1 {dataset}"] = {}
             self.metrics_dict[f"Loss L2 {dataset}"] = {}
         self.used_keys = {}
-    
+
     def fill_metrics(self, mapping, epoch):
         for key in mapping.keys():
             assert key in self.metrics_dict
             self.metrics_dict[key][epoch] = mapping[key]
             self.used_keys[key] = True
-        
+
     def compute_and_log_metrics(self):
         metrics = {}
         for item in self.used_keys:
             metrics[item] = sum(self.metrics_dict[item].values()) / len(self.metrics_dict[item])
 
         return metrics
-    
-

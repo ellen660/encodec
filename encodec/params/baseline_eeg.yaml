@@ -18,7 +18,7 @@ optimization:
   beta2: 0.9
   warmup_epoch: 10
 dataset:
-  max_length: 6300
+  max_length: 5400
   external: false
   cv: 0
   datasets: [mesa, mgh2, bwh]
@@ -34,9 +34,9 @@ loss:
 spectrogram_loss:
   alpha: 0.01
   bandwidth: null
-  n_fft: 16
-  hop_length: 0.5
-  win_length: 2
+  n_fft: 2048
+  hop_length: [1,0.25]
+  win_length: [4,1]
 model:
   ratios:
     - 8

@@ -1,9 +1,9 @@
 exp_details:
-  name: mesa_baseline_ppg
+  name: mesa_baseline_ecg
   description: 6_seconds_6_codebooks
 common:
   log_every: 5
-  save_every: 25
+  save_every: 5
   test_every: 10
   max_epoch: 100
   seed: 42
@@ -22,7 +22,7 @@ dataset:
   external: false
   cv: 0
   datasets: [mesa, mgh2, bwh]
-  mode: chest
+  mode: ecg
 loss:
   weight_l1: 1
   weight_l2: 0.01
@@ -39,11 +39,11 @@ spectrogram_loss:
   win_length: 30
 model:
   ratios:
-    - 5
-    - 3
+    - 6
+    - 4
+    - 4
+    - 4
     - 2
-    - 2
-    - 1
   bins: 1024
   dimension: 256
   target_bandwidths:
@@ -53,7 +53,7 @@ model:
   norm: layer_norm
   segment: None
   name: my_encodec
-  sample_rate: 10
+  sample_rate: 128
   channels: 1
   discrim: false
 discrim:

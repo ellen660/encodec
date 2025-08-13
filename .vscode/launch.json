@@ -12,8 +12,8 @@
         "PYTHONPATH": "${workspaceFolder}",
       },
       "args": [
-        "--exp_name", "baseline_eeg",
-        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/eeg",
+        "--exp_name", "baseline_resp",
+        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/resp",
       ]
     },
     
@@ -47,7 +47,6 @@
         "PYTHONPATH": "${workspaceFolder}"
       },
       "args": [
-        "--model_dir", "ppg/mesa_new/20250804_010937",
         "--datasets", "mesa", "bwh", "mgh2",
         "--do_code_generation", "true",
         "--do_token_distribution", "false",

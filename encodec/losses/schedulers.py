@@ -3,6 +3,7 @@ from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 import math
 
+
 class LinearWarmupCosineAnnealingLR(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, warmup_epochs, max_epochs, min_lr=0, last_epoch=-1):
         self.warmup_epochs = warmup_epochs
@@ -17,10 +18,13 @@ class LinearWarmupCosineAnnealingLR(torch.optim.lr_scheduler._LRScheduler):
             lr_scale = (epoch + 1) / self.warmup_epochs
         else:
             # Cosine annealing after warmup
-            lr_scale = 0.5 * (1 + math.cos(math.pi * (epoch - self.warmup_epochs) / (self.max_epochs - self.warmup_epochs)))
+            lr_scale = 0.5 * (
+                1 + math.cos(math.pi * (epoch - self.warmup_epochs) / (self.max_epochs - self.warmup_epochs))
+            )
 
         # Return adjusted learning rates for all parameter groups
         return [self.min_lr + (base_lr - self.min_lr) * lr_scale for base_lr in self.base_lrs]
+
 
 class WarmupScheduler(_LRScheduler):
     def __init__(self, optimizer: Optimizer, warmup_steps: int, base_scheduler: _LRScheduler, last_epoch: int = -1):
@@ -37,7 +41,7 @@ class WarmupScheduler(_LRScheduler):
         self.warmup_steps = warmup_steps
         self.base_scheduler = base_scheduler
         super(WarmupScheduler, self).__init__(optimizer, last_epoch)
-    
+
     def get_lr(self):
         if self.last_epoch < self.warmup_steps:
             # Linear warmup phase
@@ -53,6 +57,7 @@ class WarmupScheduler(_LRScheduler):
         else:
             # Step the base scheduler after warmup
             self.base_scheduler.step(epoch)
+
 
 # # Example usage
 # model = torch.nn.Linear(10, 2)

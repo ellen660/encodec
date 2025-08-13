@@ -70,8 +70,14 @@
         "alpha": { "type": "number" },
         "bandwidth": { "type": ["number", "null"] },
         "n_fft": { "type": "integer" },
-        "hop_length": { "type": "integer" },
-        "win_length": { "type": "integer" }
+        "hop_length": { 
+          "type": "array",
+          "items": { "type": "number" }
+        },
+        "win_length": { 
+          "type": "array",
+          "items": { "type": "number" }
+        }
       },
       "required": ["alpha", "bandwidth", "n_fft", "hop_length", "win_length"]
     },
