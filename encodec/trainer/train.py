@@ -200,7 +200,7 @@ def train_one_step(
 
             # --- reduce all at once ---
             metrics_tensor = torch.tensor(metrics, device=device)
-            metrics_tensor = reduce_mean(metrics_tensor, world_size)
+            metrics_tensor = reduce_mean(metrics_tensor, world_size).tolist()
             
             # --- unpack back ---
             loss_L1      = metrics_tensor[0].item()
