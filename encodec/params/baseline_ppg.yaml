@@ -5,7 +5,7 @@ common:
   log_every: 5
   save_every: 5
   test_every: 10
-  max_epoch: 200
+  max_epoch: 100
   seed: 42
   gradient_clipping: false
   gradient_clipping_value: 0.1
@@ -13,7 +13,7 @@ common:
   debug: false
 optimization:
   lr: 0.0001
-  batch_size: 2
+  batch_size: 4
   beta1: 0.8
   beta2: 0.9
   warmup_epoch: 10
@@ -35,8 +35,8 @@ spectrogram_loss:
   alpha: 0.01
   bandwidth: null
   n_fft: 2048
-  hop_length: 5
-  win_length: 30
+  hop_length: [5]
+  win_length: [30]
 model:
   ratios:
     - 4

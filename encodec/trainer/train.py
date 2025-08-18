@@ -7,6 +7,27 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import torch.distributed as dist
+
+def reduce_mean(tensor, world_size):
+    # tensor: torch scalar on GPU
+    if world_size < 2:
+        return tensor
+    dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+    tensor /= world_size
+    return tensor
+
+def gather_codes(codes, world_size):
+    # Ensure tensor
+    if not torch.is_tensor(codes):
+        codes = torch.tensor(codes, device=codes.device if hasattr(codes, "device") else "cuda")
+    
+    # Prepare list to gather into
+    gathered = [torch.zeros_like(codes) for _ in range(world_size)]
+    dist.all_gather(gathered, codes)
+    
+    # Concatenate along batch dimension
+    return torch.cat(gathered, dim=0)
 
 def train_one_step(
     metrics,
@@ -53,14 +74,7 @@ def train_one_step(
     forward_time = 0
     all_codes = []
 
-    for i, (item, ds_id) in enumerate(
-        tqdm(
-            train_loader,
-            desc=f"Training Epoch {epoch}",
-            unit="batch",
-            disable=(rank != 0),
-        )
-    ):
+    for i, (item, ds_id) in enumerate(tqdm(train_loader,desc=f"Training Epoch {epoch}",unit="batch",disable=(rank != 0),)):
         x = item["x"]
         data_loading += time.time() - start_data_time
 
@@ -112,7 +126,6 @@ def train_one_step(
         optimizer.step()
 
         forward_time += time.time() - start_forward_time
-        start_data_time = time.time()
 
         if train_discriminator:
             logits_real, _ = disc(x)
@@ -125,69 +138,92 @@ def train_one_step(
                 torch.nn.utils.clip_grad_norm_(disc.parameters(), config.common.gradient_clipping_value)
             optimizer_disc.step()
 
-            if epoch % config.common.log_every == 1 and rank == 0:
-                metrics.fill_metrics(
-                    {"Loss Discriminator": loss_disc.item()},
-                    epoch * len(train_loader) + i,
-                )
-                metrics.fill_metrics(
-                    {"Logits Real": (torch.mean(logits_real[0]).item() + torch.mean(logits_real[1]).item()) / 2},
-                    epoch * len(train_loader) + i,
-                )
-                metrics.fill_metrics(
-                    {"Logits Fake": (torch.mean(logits_fake[0]).item() + torch.mean(logits_fake[1]).item()) / 2},
-                    epoch * len(train_loader) + i,
-                )
-                epoch_loss += loss_disc.item()
+            if epoch % config.common.log_every == 1:
+                epoch_loss += loss_disc_tensor.item()
+                
+                # Reduce discriminator loss
+                loss_disc_tensor = torch.tensor(loss_disc.item(), device=device)
+                loss_disc_tensor = reduce_mean(loss_disc_tensor, dist.get_world_size())
 
-                max_disc_gradient = torch.tensor(0.0).to(device)
+                # Reduce logits
+                logits_real_mean = (logits_real[0].mean() + logits_real[1].mean()) / 2
+                logits_fake_mean = (logits_fake[0].mean() + logits_fake[1].mean()) / 2
+                logits_real_tensor = reduce_mean(logits_real_mean.detach(), dist.get_world_size())
+                logits_fake_tensor = reduce_mean(logits_fake_mean.detach(), dist.get_world_size())
+
+                # Reduce max gradient
+                max_disc_gradient = torch.tensor(0.0, device=device)
                 for param in disc.parameters():
                     if param.grad is not None:
-                        max_disc_gradient = max(max_disc_gradient, param.grad.abs().max().item())
-                metrics.fill_metrics(
-                    {"Max Discriminator Gradient": max_disc_gradient},
-                    epoch * len(train_loader) + i,
-                )
+                        local_max = param.grad.abs().max()
+                        max_disc_gradient = torch.max(max_disc_gradient, local_max)
+                max_disc_gradient = reduce_mean(max_disc_gradient, dist.get_world_size())
 
-        if epoch % config.common.log_every == 1 and rank == 0:
-            all_codes.append(codes)
-            epoch_loss += loss.item()
-            metrics.fill_metrics(
-                {
-                    "Loss L1": losses_g["l_1"].item(),
-                    "Loss commit_loss": commit_loss.item(),
-                    "Loss Frequency L1": freq_loss_dict["l1_loss"].item(),
-                    "Frequency Accuracy": freq_loss_dict["acc"].item(),
-                },
-                epoch * len(train_loader) + i,
-            )
+                # Only rank 0 logs
+                if rank == 0:
+                    step = epoch * len(train_loader) + i
+                    metrics.fill_metrics({"Loss Discriminator": loss_disc_tensor.item()}, step)
+                    metrics.fill_metrics({"Logits Real": logits_real_tensor.item()}, step)
+                    metrics.fill_metrics({"Logits Fake": logits_fake_tensor.item()}, step)
+                    metrics.fill_metrics({"Max Discriminator Gradient": max_disc_gradient.item()}, step)
 
+        if epoch % config.common.log_every == 1:
+            world_size = dist.get_world_size()
+
+            # --- global losses ---
+            loss_L1      = reduce_mean(torch.tensor(losses_g["l_1"].item(), device=device), world_size) #create new tensor with no grad
+            commit_loss_ = reduce_mean(torch.tensor(commit_loss.item(), device=device), world_size)
+            freq_L1      = reduce_mean(torch.tensor(freq_loss_dict["l1_loss"].item(), device=device), world_size)
+            freq_acc     = reduce_mean(torch.tensor(freq_loss_dict["acc"].item(), device=device), world_size)
+            global_codes = gather_codes(codes, world_size)
+            epoch_loss += loss.item()  # careful: this is still local! reduce at epoch end
+
+            # --- dataset-specific losses ---
+            loss_L1_datasets = []
             for j, d_id in enumerate(ds_id):
-                dataset_id = d_id
-                metrics.fill_metrics(
-                    {f"Loss L1 {dataset_id}": losses_g["l_t"][j].item()},
-                    epoch * len(train_loader) + i,
-                )
+                local_val = torch.tensor(losses_g["l_t"][j].item(), device=device)
+                loss_L1_datasets.append((d_id, reduce_mean(local_val, world_size)))
 
+            # --- generator-specific ---
             if train_generator and not train_discriminator:
-                metrics.fill_metrics(
-                    {
-                        "Loss Generator": losses_g["l_g"].item(),
-                        "Loss Feature": losses_g["l_feat"].item(),
-                    },
-                    epoch * len(train_loader) + i,
-                )
+                loss_g     = reduce_mean(torch.tensor(losses_g["l_g"].item(), device=device), world_size)
+                loss_feat  = reduce_mean(torch.tensor(losses_g["l_feat"].item(), device=device), world_size)
 
-            max_gradient = torch.tensor(0.0).to(device)
+            # --- gradient norm ---
+            max_gradient = torch.tensor(0.0, device=device)
             for param in model.parameters():
                 if param.grad is not None:
-                    max_gradient = max(max_gradient, param.grad.abs().max().item())
+                    local_max = param.grad.abs().max()
+                    max_gradient = torch.max(max_gradient, local_max)
+            max_gradient = reduce_mean(max_gradient, world_size)
 
-            metrics.fill_metrics({"Max Gradient": max_gradient}, epoch * len(train_loader) + i)
-            plot_codebook(all_codes=all_codes, epoch=epoch, config=config, writer=writer)
-            if i ==0:
-                plot_reconstruction(x=x, x_hat=x_hat, freq_loss_dict=freq_loss_dict, log_dir=log_dir, epoch=epoch, config=config)
-            
+            # --- only rank 0 logs / plots ---
+            if rank == 0:
+                step = epoch * len(train_loader) + i
+                metrics.fill_metrics({
+                    "Loss L1": loss_L1.item(),
+                    "Loss commit_loss": commit_loss_.item(),
+                    "Loss Frequency L1": freq_L1.item(),
+                    "Frequency Accuracy": freq_acc.item(),
+                    "Max Gradient": max_gradient.item(),
+                }, step)
+
+                for d_id, val in loss_L1_datasets:
+                    metrics.fill_metrics({f"Loss L1 {d_id}": val.item()}, step)
+
+                if train_generator and not train_discriminator:
+                    metrics.fill_metrics({
+                        "Loss Generator": loss_g.item(),
+                        "Loss Feature": loss_feat.item(),
+                    }, step)
+
+                all_codes.append(global_codes.cpu())
+                plot_codebook(all_codes=all_codes, epoch=epoch, config=config, writer=writer)
+                if i == 0:
+                    plot_reconstruction(x=x, x_hat=x_hat, freq_loss_dict=freq_loss_dict,
+                                        log_dir=log_dir, epoch=epoch, config=config)
+                
+        start_data_time = time.time()
                 
     if rank == 0:
         print(
@@ -198,14 +234,17 @@ def train_one_step(
     if config.discrim.train_discriminator and epoch >= config.discrim.train_discriminator_start_epoch:
         disc_scheduler.step()
 
-    if epoch % config.common.log_every == 1 and rank == 0:
-        metrics_dict = metrics.compute_and_log_metrics()
-        metrics_dict["Learning Rate"] = optimizer.param_groups[0]["lr"]
-        loss_per_epoch = epoch_loss / len(train_loader)
-        print(f"Epoch {epoch}, training loss: {loss_per_epoch}")
+    if epoch % config.common.log_every == 1:
+        epoch_loss_global = reduce_mean(torch.tensor(epoch_loss, device=device), dist.get_world_size())
 
-        logger(writer, metrics_dict, "train", epoch)
-        metrics.clear_metrics()
+        if rank == 0:
+            metrics_dict = metrics.compute_and_log_metrics()
+            metrics_dict["Learning Rate"] = optimizer.param_groups[0]["lr"]
+            loss_per_epoch = epoch_loss_global / len(train_loader)
+            print(f"Epoch {epoch}, training loss: {loss_per_epoch}")
+
+            logger(writer, metrics_dict, "train", epoch)
+            metrics.clear_metrics()
 
 
 # Logger for tensorboard

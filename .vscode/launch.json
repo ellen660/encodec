@@ -29,10 +29,10 @@
       },
       "args": [
         "--standalone", //standalone is good for automatically setting up DDP on a single node
-        "--nproc_per_node=1",
+        "--nproc_per_node=2",
         "encodec/trainer/init_config.py",
-        "--exp_name", "baseline_resp",
-        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/resp"
+        "--exp_name", "baseline_ppg",
+        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/ppg"
       ],
       "cwd": "${workspaceFolder}"
     },

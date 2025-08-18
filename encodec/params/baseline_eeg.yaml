@@ -18,7 +18,7 @@ optimization:
   beta2: 0.9
   warmup_epoch: 10
 dataset:
-  max_length: 5400 # in seconds
+  max_length: 4600
   #total number of codes per batch: max_length * sample_rate * batch_size / (ratios)
   external: false
   cv: 0
@@ -40,10 +40,10 @@ spectrogram_loss:
   win_length: [4,1]
 model:
   ratios:
-    - 8
-    - 6
     - 4
     - 4
+    - 4
+    - 3
     - 2
   bins: 1024
   dimension: 256
