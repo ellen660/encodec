@@ -18,7 +18,8 @@ optimization:
   beta2: 0.9
   warmup_epoch: 10
 dataset:
-  max_length: 5400
+  max_length: 5400 # in seconds
+  #total number of codes per batch: max_length * sample_rate * batch_size / (ratios)
   external: false
   cv: 0
   datasets: [mesa, mgh2, bwh]
