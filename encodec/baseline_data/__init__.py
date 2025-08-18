@@ -128,7 +128,7 @@ def init_dataset(
     """
     from time series univeral loader
     """
-    cv = config.dataset.cv
+    cv = -1
     compression_ratio = np.prod(config.model.ratios)
     if type == "training":
         exclude_dataset = "mesa" if config.dataset.external else None
@@ -150,31 +150,31 @@ def init_dataset(
         debug=False,
     )
     # create train/val datasets
-    train_files, val_files = set(), set()
+    # train_files, val_files = set(), set()
     train_dataset = UniversalWrapper(
         args=args,
         type="train",
         compression_ratio=compression_ratio,
         debug_training=debug_training,
     )
-    val_dataset = UniversalWrapper(
-        args=args,
-        type="val",
-        compression_ratio=compression_ratio,
-        debug_training=debug_training,
-    )
-    train_files.update(train_dataset.all_files)
-    val_files.update(set(val_dataset.all_files))
-    assert train_files.isdisjoint(val_files), "training and val sets intersect!"
-    print("✅ No data leakage")
+    # val_dataset = UniversalWrapper(
+    #     args=args,
+    #     type="val",
+    #     compression_ratio=compression_ratio,
+    #     debug_training=debug_training,
+    # )
+    # train_files.update(train_dataset.all_files)
+    # val_files.update(set(val_dataset.all_files))
+    # assert train_files.isdisjoint(val_files), "training and val sets intersect!"
+    # print("✅ No data leakage")
 
-    combined_dataset = ConcatDataset([train_dataset, val_dataset])
-    print(f"total number of samples for {type}: {len(combined_dataset)}")
+    # combined_dataset = ConcatDataset([train_dataset, val_dataset])
+    print(f"total number of samples for {type}: {len(train_dataset)}")
 
     # sampler: use DistributedSampler for DDP (it will call set_epoch in training loop)
     if ddp:
         sampler = DistributedSampler(
-            combined_dataset,
+            train_dataset,
             num_replicas=dist.get_world_size() if dist.is_initialized() else None,
             rank=dist.get_rank() if dist.is_initialized() else None,
             shuffle=True,
@@ -191,15 +191,15 @@ def init_dataset(
         worker_init = None
 
     data_loader = DataLoader(
-        dataset=combined_dataset,
+        dataset=train_dataset,
         batch_size=config.optimization.batch_size,
         shuffle=False,
         num_workers=config.common.num_workers,
         pin_memory=pin_memory,
-        sampler=sampler if sampler is not None else RandomSampler(combined_dataset),
+        sampler=sampler if sampler is not None else RandomSampler(train_dataset),
         persistent_workers=True,
         drop_last=True,
         worker_init_fn=worker_init,
     )
 
-    return combined_dataset, data_loader, sampler
+    return train_dataset, data_loader, sampler

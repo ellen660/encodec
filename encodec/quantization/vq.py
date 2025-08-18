@@ -99,14 +99,8 @@ class ResidualVectorQuantizer(nn.Module):
         bw_per_q = self.get_bandwidth_per_quantizer(frame_rate)
         n_q = self.get_num_quantizers_for_bandwidth(frame_rate, bandwidth)
         quantized, codes, commit_loss = self.vq(x, n_q=n_q)
+        #x   [-0.4486,  0.6813, -0.1261,  ...,  0.7333, -0.2821,  1.3599]]],
         bw = torch.tensor(n_q * bw_per_q).to(x)
-        # print(f'bw: {bw}')
-        # print(f'quantized: {quantized.shape}')
-        # print(f'codes: {codes.shape}')
-        # print(f'commit_loss: {commit_loss.shape}')
-        # print(f'penalty: {torch.mean(commit_loss)}')
-        # print(f'commit_loss: {commit_loss.device}')
-        # sys.exit()
         return QuantizedResult(quantized, codes, bw, commit_loss, commit_loss)
 
     def get_num_quantizers_for_bandwidth(self, frame_rate: int, bandwidth: tp.Optional[float] = None) -> int:

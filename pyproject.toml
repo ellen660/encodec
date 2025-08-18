@@ -32,6 +32,7 @@ ruff = "^0.12.7"
 black = "^25.1.0"
 isort = "^6.0.1"
 pyright = "^1.1.403"
+torchviz = "^0.0.3"
 
 [tool.black]
 line-length = 120

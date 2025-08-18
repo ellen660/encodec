@@ -31,11 +31,12 @@
         "--standalone", //standalone is good for automatically setting up DDP on a single node
         "--nproc_per_node=1",
         "encodec/trainer/init_config.py",
-        "--exp_name", "baseline_eeg",
-        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/eeg"
+        "--exp_name", "baseline_resp",
+        "--log_dir", "${workspaceFolder}/encodec/ablations/baseline/resp"
       ],
       "cwd": "${workspaceFolder}"
     },
+    
     {
       "name": "Debug code generation",
       "type": "python",
@@ -69,6 +70,18 @@
         "${workspaceFolder}/encodec/trainer/evaluate.py",
         "--datasets", "bwh", "mgh2", "mesa"
       ],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "name": "Debug gradient",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/encodec/quantization/core_vq.py",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      },
       "cwd": "${workspaceFolder}"
     },
   ]

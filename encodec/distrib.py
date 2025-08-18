@@ -70,7 +70,7 @@ def broadcast_tensors(tensors: tp.Iterable[torch.Tensor], src: int = 0):
         handle.wait()
 
 
-def sync_buffer(buffers, average=True):
+def sync_buffer(buffers, type: tp.Literal['average', 'sum', 'broadcast']):
     """
     Sync grad for buffers. If average is False, broadcast instead of averaging.
     """
@@ -79,7 +79,7 @@ def sync_buffer(buffers, average=True):
     handles = []
     for buffer in buffers:
         if torch.is_floating_point(buffer.data):
-            if average:
+            if type == 'average' or type == 'sum':
                 handle = torch.distributed.all_reduce(
                     buffer.data, op=torch.distributed.ReduceOp.SUM, async_op=True)
             else:
@@ -88,8 +88,8 @@ def sync_buffer(buffers, average=True):
             handles.append((buffer, handle))
     for buffer, handle in handles:
         handle.wait()
-        if average:
-            buffer.data /= world_size
+        if type == 'average':
+            buffer.data /= world_size()
 
 
 def sync_grad(params):
