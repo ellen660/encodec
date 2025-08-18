@@ -174,7 +174,15 @@ def set_random_seed(random_seed: int = 42) -> None:
         The seed to be set for generating random numbers in PyPOTS.
 
     """
-    globals()["RANDOM_SEED"] = random_seed
+    import torch.distributed as dist
+
+    # Get rank for distributed setup
+    rank = dist.get_rank() if dist.is_initialized() else 0
+
+    # Make a seed unique per rank
+    random_seed = random_seed + rank
+    
+    # globals()["RANDOM_SEED"] = random_seed
     random.seed(random_seed)
     np.random.seed(random_seed)
     torch.manual_seed(random_seed)

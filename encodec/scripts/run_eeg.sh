@@ -3,50 +3,36 @@
 set -e  # Exit on error
 
 # Send email on error
-trap 'poetry run python encodec/notify_failure.py' ERR
+trap 'echo "[ERROR] Rank $NODE_RANK failed, killing all processes" && pkill -f torchrun' ERR INT TERM
 
-# Define project root
-ROOT_DIR=$(pwd)
+# ----------------------
+# USER CONFIG
+# ----------------------
+ROOT_DIR=$(pwd)                 # root of your project
+SCRIPT=encodec/trainer/init_config.py
+NNODES=4                        # total number of nodes
+NPROC_PER_NODE=4                # number of GPUs per node
+MASTER_ADDR=172.30.100.29              # IP of the master node
+# On the master node
+# hostname -I | awk '{print $1}'   # prints the primary IP
+MASTER_PORT=29501               # TCP port for DDP communication
+# check if free: lsof -i :29500
+NODE_RANK=$1                    # pass 0 for master, 1..N-1 for workers
 
-# # Set PYTHONPATH and run
-# PYTHONPATH=$ROOT_DIR \
-# poetry run python encodec/train.py \
-#   --exp_name baseline_eeg \
-#   --log_dir "$ROOT_DIR/encodec/ablations/baseline/eeg"
+# ----------------------
+# RUN
+# ----------------------
+export PYTHONPATH=$ROOT_DIR
+export NCCL_ASYNC_ERROR_HANDLING=1
+export NCCL_BLOCKING_WAIT=1
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
 
-# Run distributed training with torch.distributed.run (DDP launcher)
-PYTHONPATH=$ROOT_DIR \
-poetry run python -m torch.distributed.run \
-  --standalone \
-  --nproc_per_node=4 \
-  encodec/trainer/init_config.py \
-  --exp_name baseline_eeg \
-  --log_dir "$ROOT_DIR/encodec/ablations/baseline/eeg"
-
-#   Here are solid STFT settings:
-
-# One-pass “good compromise”
-# nperseg = 512 (2.0 s window) → Δf = fs/nperseg = 0.5 Hz (resolves delta)
-
-# noverlap = 384 (75% overlap) → hop = 0.5 s
-
-# nfft = 1024 (zero-pad for smoother spectrum)
-
-# window = 'hann'
-
-# Two-pass (often better)
-# Low bands (delta–theta):
-
-# nperseg = 1024 (4.0 s) → Δf = 0.25 Hz
-
-# noverlap = 768 (75%) → hop = 1.0 s
-
-# nfft = 2048, window='hann'
-
-# High bands (beta–gamma):
-
-# nperseg = 256 (1.0 s) → Δf = 1 Hz
-
-# noverlap = 192 (75%) → hop = 0.25 s
-
-# nfft = 512, window='hann'
+poetry run torchrun \
+    --nnodes=$NNODES \
+    --nproc_per_node=$NPROC_PER_NODE \
+    --node_rank=$NODE_RANK \
+    --master_addr=$MASTER_ADDR \
+    --master_port=$MASTER_PORT \
+    $SCRIPT \
+    --exp_name baseline_eeg \
+    --log_dir "$ROOT_DIR/encodec/ablations/baseline/eeg" &
