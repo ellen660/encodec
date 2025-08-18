@@ -169,33 +169,57 @@ def train_one_step(
 
         if epoch % config.common.log_every == 1:
             world_size = dist.get_world_size()
-
-            # --- global losses ---
-            loss_L1      = reduce_mean(torch.tensor(losses_g["l_1"].item(), device=device), world_size) #create new tensor with no grad
-            commit_loss_ = reduce_mean(torch.tensor(commit_loss.item(), device=device), world_size)
-            freq_L1      = reduce_mean(torch.tensor(freq_loss_dict["l1_loss"].item(), device=device), world_size)
-            freq_acc     = reduce_mean(torch.tensor(freq_loss_dict["acc"].item(), device=device), world_size)
+            epoch_loss += loss.item()
             global_codes = gather_codes(codes, world_size)
-            epoch_loss += loss.item()  # careful: this is still local! reduce at epoch end
 
-            # --- dataset-specific losses ---
-            loss_L1_datasets = []
-            for j, d_id in enumerate(ds_id):
-                local_val = torch.tensor(losses_g["l_t"][j].item(), device=device)
-                loss_L1_datasets.append((d_id, reduce_mean(local_val, world_size)))
+            metrics = []
 
-            # --- generator-specific ---
+            # global losses
+            metrics.append(losses_g["l_1"].item())               # 0
+            metrics.append(commit_loss.item())                   # 1
+            metrics.append(freq_loss_dict["l1_loss"].item())     # 2
+            metrics.append(freq_loss_dict["acc"].item())         # 3
+
+            # dataset-specific losses
+            ds_ids = list(ds_id)   # keep for mapping back
+            for j, d_id in enumerate(ds_ids):
+                metrics.append(losses_g["l_t"][j].item())        # 4..N
+            
+            # generator-specific
             if train_generator and not train_discriminator:
-                loss_g     = reduce_mean(torch.tensor(losses_g["l_g"].item(), device=device), world_size)
-                loss_feat  = reduce_mean(torch.tensor(losses_g["l_feat"].item(), device=device), world_size)
+                metrics.append(losses_g["l_g"].item())           # after dataset losses
+                metrics.append(losses_g["l_feat"].item())
 
-            # --- gradient norm ---
+            # gradient norm
             max_gradient = torch.tensor(0.0, device=device)
             for param in model.parameters():
                 if param.grad is not None:
                     local_max = param.grad.abs().max()
                     max_gradient = torch.max(max_gradient, local_max)
-            max_gradient = reduce_mean(max_gradient, world_size)
+            metrics.append(max_gradient.item())                  # last slot
+
+            # --- reduce all at once ---
+            metrics_tensor = torch.tensor(metrics, device=device)
+            metrics_tensor = reduce_mean(metrics_tensor, world_size)
+            
+            # --- unpack back ---
+            loss_L1      = metrics_tensor[0].item()
+            commit_loss_ = metrics_tensor[1].item()
+            freq_L1      = metrics_tensor[2].item()
+            freq_acc     = metrics_tensor[3].item()
+            
+            loss_L1_datasets = []
+            offset = 4
+            for j, d_id in enumerate(ds_ids):
+                loss_L1_datasets.append((d_id, metrics_tensor[offset + j].item()))
+            offset += len(ds_ids)
+            
+            if train_generator and not train_discriminator:
+                loss_g    = metrics_tensor[offset].item()
+                loss_feat = metrics_tensor[offset + 1].item()
+                offset += 2
+            
+            max_gradient = metrics_tensor[offset].item()
 
             # --- only rank 0 logs / plots ---
             if rank == 0:
@@ -224,11 +248,6 @@ def train_one_step(
                                         log_dir=log_dir, epoch=epoch, config=config)
                 
         start_data_time = time.time()
-                
-    if rank == 0:
-        print(
-            f"Epoch {epoch}: Data loading time: {data_loading/i:.4f}s, To device time: {to_device/i:.4f}s, Forward pass time: {forward_time/i:.4f}s"
-        )
 
     scheduler.step()
     if config.discrim.train_discriminator and epoch >= config.discrim.train_discriminator_start_epoch:
@@ -238,6 +257,9 @@ def train_one_step(
         epoch_loss_global = reduce_mean(torch.tensor(epoch_loss, device=device), dist.get_world_size())
 
         if rank == 0:
+            print(
+                f"Epoch {epoch}: Data loading time: {data_loading/i:.4f}s, To device time: {to_device/i:.4f}s, Forward pass time: {forward_time/i:.4f}s"
+            )
             metrics_dict = metrics.compute_and_log_metrics()
             metrics_dict["Learning Rate"] = optimizer.param_groups[0]["lr"]
             loss_per_epoch = epoch_loss_global / len(train_loader)

@@ -155,6 +155,7 @@ class EuclideanCodebook(nn.Module):
     @torch.jit.ignore
     def init_embed_(self, data):
         if self.inited: return 
+        print(f'init rank {distrib.rank()}')
 
         if distrib.rank() == 0:
             embed, _ = kmeans(data, self.codebook_size, self.kmeans_iters)
@@ -211,6 +212,7 @@ class EuclideanCodebook(nn.Module):
         if distrib.rank() == 0:
             expired_codes = self.cluster_size < self.threshold_ema_dead_code
             if torch.any(expired_codes):
+                print(f'expiring codes')
                 batch_samples = rearrange(batch_samples, "... d -> (...) d")
                 self.replace_(batch_samples, mask=expired_codes)
         else:
@@ -293,17 +295,28 @@ class EuclideanCodebook(nn.Module):
             ema_inplace(moving_avg = self.embed_avg, new = embed_sum.t(), decay = self.decay)
 
             # Update expired codes 
-            cluster_size = laplace_smoothing(self.cluster_size, self.codebook_size, self.epsilon) * self.cluster_size.sum()
-            replaced_codes = self.expire_codes_(x)  # return mask of replaced codes
-            self.embed_avg.data[replaced_codes] = self.embed.data[replaced_codes]
+            # replaced_codes = self.expire_codes_(x)  # return mask of replaced codes
+            # self.embed_avg.data[replaced_codes] = self.embed.data[replaced_codes]
 
             # Normalize
+            cluster_size = laplace_smoothing(self.cluster_size, self.codebook_size, self.epsilon) * self.cluster_size.sum()
             embed_normalized = self.embed_avg / cluster_size.unsqueeze(1)
             self.embed.data.copy_(embed_normalized)
+            # mask = ~replaced_codes  # only normalize non-replaced codes
+            # embed_normalized = self.embed_avg.clone()
+            # embed_normalized[:, mask] = embed_normalized[:, mask] / cluster_size_corrected[mask].view(1, -1)
+
+            # Copy back
+            # self.embed.data[:, mask] = embed_normalized[:, mask]
+
+
+            # embed_normalized[:, mask] /= cluster_size[mask].unsqueeze(1)
+            # embed_normalized[mask] = embed_normalized[mask] / cluster_size[mask].unsqueeze(1)
+            # self.embed.data[mask] = embed_normalized[mask]
+            # self.cluster_size.data[replaced_codes] = self.threshold_ema_dead_code
 
         return quantize, embed_ind
     
-
     
 #         if self.training:
 #             # We do the expiry of code at that point as buffers are in sync
