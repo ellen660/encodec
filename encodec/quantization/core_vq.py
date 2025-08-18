@@ -156,7 +156,6 @@ class EuclideanCodebook(nn.Module):
     def init_embed_(self, data):
         if self.inited: return 
 
-        print(f'initing on {distrib.rank()}')
         if distrib.rank() == 0:
             embed, _ = kmeans(data, self.codebook_size, self.kmeans_iters)
             self.embed.data.copy_(embed)
@@ -212,7 +211,6 @@ class EuclideanCodebook(nn.Module):
         if distrib.rank() == 0:
             expired_codes = self.cluster_size < self.threshold_ema_dead_code
             if torch.any(expired_codes):
-                print(f'expiring codes')
                 batch_samples = rearrange(batch_samples, "... d -> (...) d")
                 self.replace_(batch_samples, mask=expired_codes)
         else:
@@ -279,9 +277,6 @@ class EuclideanCodebook(nn.Module):
         if self.training:
             # We do the expiry of code at that point as buffers are in sync
             # and all the workers will take the same decision.
-            replaced_codes = self.expire_codes_(x)  # return mask of replaced codes
-            self.embed_avg.data[replaced_codes] = self.embed.data[replaced_codes]
-            
             # Local stats
             cluster_new = embed_onehot.sum(0)        # [num_codes]
             embed_sum   = x.t() @ embed_onehot       # [d, num_codes]
@@ -296,12 +291,13 @@ class EuclideanCodebook(nn.Module):
             # EMA updates
             ema_inplace(moving_avg = self.cluster_size, new = cluster_new, decay = self.decay)
             ema_inplace(moving_avg = self.embed_avg, new = embed_sum.t(), decay = self.decay)
-                
+
+            # Update expired codes 
+            cluster_size = laplace_smoothing(self.cluster_size, self.codebook_size, self.epsilon) * self.cluster_size.sum()
+            replaced_codes = self.expire_codes_(x)  # return mask of replaced codes
+            self.embed_avg.data[replaced_codes] = self.embed.data[replaced_codes]
+
             # Normalize
-            cluster_size = (
-                laplace_smoothing(self.cluster_size, self.codebook_size, self.epsilon)
-                * self.cluster_size.sum()
-            )
             embed_normalized = self.embed_avg / cluster_size.unsqueeze(1)
             self.embed.data.copy_(embed_normalized)
 
@@ -362,6 +358,7 @@ class VectorQuantization(nn.Module):
         self.project_out = (nn.Linear(_codebook_dim, dim) if requires_projection else nn.Identity())
 
         self.epsilon = epsilon
+        # self.commitment_weight = commitment_weight
         self.commitment_weight = 1.
 
         self._codebook = EuclideanCodebook(dim=_codebook_dim, codebook_size=codebook_size, kmeans_init=kmeans_init, kmeans_iters=kmeans_iters, decay=decay, epsilon=epsilon, threshold_ema_dead_code=threshold_ema_dead_code)
