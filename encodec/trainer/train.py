@@ -112,7 +112,6 @@ def train_one_step(
         optimizer.step()
 
         forward_time += time.time() - start_forward_time
-        start_data_time = time.time()
 
         if train_discriminator:
             logits_real, _ = disc(x)
@@ -187,7 +186,8 @@ def train_one_step(
             plot_codebook(all_codes=all_codes, epoch=epoch, config=config, writer=writer)
             if i ==0:
                 plot_reconstruction(x=x, x_hat=x_hat, freq_loss_dict=freq_loss_dict, log_dir=log_dir, epoch=epoch, config=config)
-            
+                
+        start_data_time = time.time()
                 
     if rank == 0:
         print(

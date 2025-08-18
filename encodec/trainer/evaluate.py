@@ -6,7 +6,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from baseline_data import UniversalWrapper
+from baseline_data import UniversalWrapper, init_dataset
 from torch.utils.data import DataLoader
 
 from encodec.losses import ReconstructionLoss, total_loss
@@ -231,21 +231,26 @@ if __name__ == "__main__":
         debug=False,
     )
     # create train/val datasets
-    train_dataset = UniversalWrapper(
-        args=dataset_args,
-        type="train",
-        compression_ratio=compression_ratio,
-        debug_training=False,
-    )
-    dataloader = DataLoader(
-        train_dataset,
-        batch_size=1,
-        shuffle=False,
-        num_workers=config.common.num_workers,
-        drop_last=False,
+    dataset, train_loader, sampler = init_dataset(
+        config=config,
+        type="training",
+        datasets=config.dataset.datasets,
+        ddp=True,
         pin_memory=True,
-        persistent_workers=True,
+        debug_training=args.debug,
     )
+    # dataloader = DataLoader(
+    #     train_dataset,
+    #     batch_size=1,
+    #     shuffle=False,
+    #     num_workers=config.common.num_workers,
+    #     drop_last=False,
+    #     pin_memory=True,
+    #     persistent_workers=True,
+    # )
+    for i, (item, ds_id) in enumerate(train_loader):
+        print(i)
+    breakpoint()
 
     # Initialize model
     model, disc = init_model(config, train_discriminator=False, save_path=None)

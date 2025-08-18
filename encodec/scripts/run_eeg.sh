@@ -10,9 +10,9 @@ trap 'echo "[ERROR] Rank $NODE_RANK failed, killing all processes" && pkill -f t
 # ----------------------
 ROOT_DIR=$(pwd)                 # root of your project
 SCRIPT=encodec/trainer/init_config.py
-NNODES=4                        # total number of nodes
+NNODES=6                        # total number of nodes
 NPROC_PER_NODE=4                # number of GPUs per node
-MASTER_ADDR=172.30.100.29              # IP of the master node
+MASTER_ADDR=172.30.100.28           # IP of the master node
 # On the master node
 # hostname -I | awk '{print $1}'   # prints the primary IP
 MASTER_PORT=29501               # TCP port for DDP communication
