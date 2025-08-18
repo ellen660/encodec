@@ -3,7 +3,7 @@ exp_details:
   description: 6_seconds_6_codebooks
 common:
   log_every: 5
-  save_every: 25
+  save_every: 5
   test_every: 10
   max_epoch: 100
   seed: 42
