@@ -169,7 +169,7 @@ def train_one_step(
         if epoch % config.common.log_every == 1:
             world_size = dist.get_world_size()
             epoch_loss += loss.item()
-            global_codes = gather_codes(codes, world_size)
+            batch_code = gather_codes(codes, world_size)
 
             metrics_dict = []
 
@@ -239,10 +239,6 @@ def train_one_step(
                         "Loss Generator": loss_g.item(),
                         "Loss Feature": loss_feat.item(),
                     }, step)
-
-                if i == 0:
-                    plot_reconstruction(x=x, x_hat=x_hat, freq_loss_dict=freq_loss_dict,
-                                        log_dir=log_dir, epoch=epoch, config=config)
                 
         start_data_time = time.time()
 
@@ -254,7 +250,10 @@ def train_one_step(
         epoch_loss_global = reduce_mean(torch.tensor(epoch_loss, device=device), dist.get_world_size())
 
         if rank == 0:
-            plot_codebook(all_codes=global_codes.cpu(), epoch=epoch, config=config, writer=writer)
+            plot_reconstruction(x=x, x_hat=x_hat, freq_loss_dict=freq_loss_dict,
+                                        log_dir=log_dir, epoch=epoch, config=config)
+                
+            plot_codebook(all_codes=batch_code.cpu(), epoch=epoch, config=config, writer=writer)
             print(
                 f"Epoch {epoch}: Data loading time: {data_loading/i:.4f}s, To device time: {to_device/i:.4f}s, Forward pass time: {forward_time/i:.4f}s"
             )
@@ -333,6 +332,9 @@ def plot_reconstruction(x, x_hat, freq_loss_dict, log_dir, epoch, config):
 
     
 def plot_codebook(all_codes, writer, epoch, config):
+    if isinstance(all_codes, torch.Tensor):
+        all_codes = [all_codes]
+        
     all_codes = torch.cat(all_codes, dim=0) # B, num_codebooks, T
     all_codes = torch.permute(all_codes, (1, 0, 2))
 
@@ -357,6 +359,7 @@ def plot_codebook(all_codes, writer, epoch, config):
     ax.set_ylabel("Entropy")
     ax.set_ylim(0, math.log2(config.model.bins))
     fig.tight_layout()
-    writer.add_figure(f"Entropy/{epoch}", fig)
+    # writer.add_figure(f"Entropy/{epoch}", fig)
+    writer.add_figure("Entropy/Codebooks", fig, global_step=epoch)
     plt.close(fig)
 
