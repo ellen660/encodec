@@ -13,7 +13,7 @@ common:
   debug: false
 optimization:
   lr: 0.0002
-  batch_size: 2
+  batch_size: 4
   beta1: 0.8
   beta2: 0.9
   warmup_epoch: 10
