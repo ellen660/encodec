@@ -86,6 +86,8 @@ def sync_buffer(buffers, type: tp.Literal['average', 'sum', 'broadcast']):
                 handle = torch.distributed.broadcast(
                     buffer.data, src=0, async_op=True)
             handles.append((buffer, handle))
+        else:
+            raise TypeError(f'buffer if not floating point')
     for buffer, handle in handles:
         handle.wait()
         if type == 'average':

@@ -101,9 +101,10 @@
         "name": { "type": "string" },
         "sample_rate": { "type": "integer" },
         "channels": { "type": "integer" },
-        "discrim": { "type": "boolean" }
+        "discrim": { "type": "boolean" },
+        "kmeans": { "type": "boolean" }
       },
-      "required": ["ratios", "bins", "dimension", "target_bandwidths", "audio_normalize", "causal", "norm", "segment", "name", "sample_rate", "channels", "discrim"]
+      "required": ["ratios", "bins", "dimension", "target_bandwidths", "audio_normalize", "causal", "norm", "segment", "name", "sample_rate", "channels", "discrim", "kmeans"]
     },
     "discrim": {
       "type": "object",

@@ -42,6 +42,7 @@ import torch.nn.functional as F
 # from .. import distrib
 import encodec.distrib as distrib
 import sys
+import numpy as np
 
 
 def default(val: tp.Any, d: tp.Any) -> tp.Any:
@@ -129,12 +130,13 @@ class EuclideanCodebook(nn.Module):
         embed = init_fn(codebook_size, dim)
 
         self.codebook_size = codebook_size
-
+        
+        self.kmeans_init = kmeans_init
         self.kmeans_iters = kmeans_iters
         self.epsilon = epsilon
         self.threshold_ema_dead_code = threshold_ema_dead_code
 
-        self.register_buffer("inited", torch.Tensor([not kmeans_init]))
+        self.register_buffer("inited", torch.Tensor([False]))
         self.register_buffer("cluster_size", torch.zeros(codebook_size))
         self.register_buffer("embed", embed)
         self.register_buffer("embed_avg", embed.clone())
@@ -155,30 +157,32 @@ class EuclideanCodebook(nn.Module):
     @torch.jit.ignore
     def init_embed_(self, data):
         if self.inited: return 
-        print(f'init rank {distrib.rank()}')
+        print(f'init rank {distrib.rank()} with kmeans {self.kmeans_init}')
 
         if distrib.rank() == 0:
-            embed, _ = kmeans(data, self.codebook_size, self.kmeans_iters)
-            self.embed.data.copy_(embed)
-            self.embed_avg.data.copy_(embed.clone())
+            if self.kmeans_init:
+                embed, _ = kmeans(data, self.codebook_size, self.kmeans_iters)
+                self.embed.data.copy_(embed)
+            else:
+                pass # embed was uniforminited in construction
             self.inited.data.copy_(torch.tensor([True], device=self.inited.device))
             
-        # All ranks must participate in broadcast
+        # Broadcast tensor from rank 0 to all other processess
         distrib.broadcast_tensors([self.inited])
         distrib.broadcast_tensors([self.embed])   # type: ignore
-        distrib.broadcast_tensors([self.embed_avg])  # type: ignore
 
-        # Ensure everyone waits until sync is done
         if distrib.is_distributed():
             torch.distributed.barrier()
 
-        # Now compute cluster sizes
+        # Sync initial cluster sizes and embed avg
         dtype = data.dtype
         embed_ind = self.quantize(data)
-        embed_onehot = F.one_hot(embed_ind, self.codebook_size).type(dtype).sum(0) #float cluster
-        self.cluster_size.data.copy_(embed_onehot)
+        embed_onehot = F.one_hot(embed_ind, self.codebook_size).type(dtype)
+        self.cluster_size.data.copy_(embed_onehot.sum(0))
+        self.embed_avg.data.copy_((data.t() @ embed_onehot).t())
 
         distrib.sync_buffer(buffers=[self.cluster_size], type='sum')
+        distrib.sync_buffer(buffers=[self.embed_avg], type='sum')
 
     def replace_(self, samples, mask):
         modified_codebook = torch.where(
@@ -228,23 +232,34 @@ class EuclideanCodebook(nn.Module):
         distrib.broadcast_tensors([self.embed])
 
         return expired_codes
+    
+    def check_code_usage(self):
+        """
+        For debugging purpoess, checkes which codes are unused 
+        Needs cluster size to be synced
+        """
+        if distrib.rank() == 0:
+            expired_codes = self.cluster_size < self.threshold_ema_dead_code
+            if torch.any(expired_codes):
+                indices = torch.nonzero(expired_codes, as_tuple=True)[0]
+                print(f'for threshhold {self.threshold_ema_dead_code} over {self.cluster_size.sum()} samples found {len(indices)} out of {self.codebook_size} dead codes')
 
     def preprocess(self, x):
         x = rearrange(x, "... d -> (...) d")
         return x
 
-    # TODO: ERROR! every segment is getting mapped to the same index
     def quantize(self, x):
+        #Euclidean distance 
         embed = self.embed.t()
 
-        dist = -(
+        dist = -( # alot of issues with this in that even if two vectors have the same director, doesn't matter if their magnitudes are different
             x.pow(2).sum(1, keepdim=True)
             - 2 * x @ embed
             + embed.pow(2).sum(0, keepdim=True)
         )
 
         embed_ind = dist.max(dim=-1).indices
-        return embed_ind #no gradient updates
+        return embed_ind 
 
     def postprocess_emb(self, embed_ind, shape):
         return embed_ind.view(*shape[:-1])
@@ -256,7 +271,6 @@ class EuclideanCodebook(nn.Module):
     def encode(self, x):
         shape = x.shape
         x = self.preprocess(x)
-        # embed_ind, soft_targets = self.quantize(x)
         embed_ind = self.quantize(x)
         embed_ind = self.postprocess_emb(embed_ind, shape)
         return embed_ind
@@ -271,7 +285,7 @@ class EuclideanCodebook(nn.Module):
 
         self.init_embed_(x) #sync here
 
-        embed_ind = self.quantize(x)
+        embed_ind = self.quantize(x) 
         embed_onehot = F.one_hot(embed_ind, self.codebook_size).type(dtype)
         embed_ind = self.postprocess_emb(embed_ind, shape)
         quantize = self.dequantize(embed_ind) #no gradient for quantize
@@ -279,18 +293,15 @@ class EuclideanCodebook(nn.Module):
         if self.training:
             # We do the expiry of code at that point as buffers are in sync
             # and all the workers will take the same decision.
-            # Local stats
             cluster_new = embed_onehot.sum(0)        # [num_codes]
             embed_sum   = x.t() @ embed_onehot       # [d, num_codes]
 
-            # Sync once across ranks, summing cluster and embed_sum before updating EMA
             if distrib.is_distributed():
                 handle1 = torch.distributed.all_reduce(cluster_new, op=torch.distributed.ReduceOp.SUM, async_op=True)
                 handle2 = torch.distributed.all_reduce(embed_sum, op=torch.distributed.ReduceOp.SUM, async_op=True)
                 handle1.wait()
                 handle2.wait()
 
-            # EMA updates
             ema_inplace(moving_avg = self.cluster_size, new = cluster_new, decay = self.decay)
             ema_inplace(moving_avg = self.embed_avg, new = embed_sum.t(), decay = self.decay)
 
@@ -302,13 +313,13 @@ class EuclideanCodebook(nn.Module):
             cluster_size = laplace_smoothing(self.cluster_size, self.codebook_size, self.epsilon) * self.cluster_size.sum()
             embed_normalized = self.embed_avg / cluster_size.unsqueeze(1)
             self.embed.data.copy_(embed_normalized)
+            # self.check_code_usage()
             # mask = ~replaced_codes  # only normalize non-replaced codes
             # embed_normalized = self.embed_avg.clone()
             # embed_normalized[:, mask] = embed_normalized[:, mask] / cluster_size_corrected[mask].view(1, -1)
 
             # Copy back
             # self.embed.data[:, mask] = embed_normalized[:, mask]
-
 
             # embed_normalized[:, mask] /= cluster_size[mask].unsqueeze(1)
             # embed_normalized[mask] = embed_normalized[mask] / cluster_size[mask].unsqueeze(1)
@@ -371,7 +382,6 @@ class VectorQuantization(nn.Module):
         self.project_out = (nn.Linear(_codebook_dim, dim) if requires_projection else nn.Identity())
 
         self.epsilon = epsilon
-        # self.commitment_weight = commitment_weight
         self.commitment_weight = 1.
 
         self._codebook = EuclideanCodebook(dim=_codebook_dim, codebook_size=codebook_size, kmeans_init=kmeans_init, kmeans_iters=kmeans_iters, decay=decay, epsilon=epsilon, threshold_ema_dead_code=threshold_ema_dead_code)
@@ -424,20 +434,20 @@ class VectorQuantization(nn.Module):
         if self.training:
             quantize = x + (quantize - x).detach()
 
-        loss = torch.tensor([0.0], device=device, requires_grad=self.training)
+        # loss = torch.tensor([0.0], device=device, requires_grad=self.training)
 
-        if self.training:
-            warnings.warn('When using RVQ in training model, first check '
-                          'https://github.com/facebookresearch/encodec/issues/25 . '
-                          'The bug wasn\'t fixed here for reproducibility.')
-            if self.commitment_weight > 0:
-                commit_loss = F.mse_loss(quantize.detach(), x)
-                # codebook_loss = F.mse_loss(quantize, x.detach())
-                loss = loss + commit_loss * self.commitment_weight 
+        # if self.training:
+        #     warnings.warn('When using RVQ in training model, first check '
+        #                   'https://github.com/facebookresearch/encodec/issues/25 . '
+        #                   'The bug wasn\'t fixed here for reproducibility.')
+        #     if self.commitment_weight > 0:
+        #         commit_loss = F.mse_loss(quantize.detach(), x)
+        #         # codebook_loss = F.mse_loss(quantize, x.detach())
+        #         loss = loss + commit_loss * self.commitment_weight 
 
         quantize = self.project_out(quantize)
         quantize = rearrange(quantize, "b n d -> b d n")
-        return quantize, embed_ind, loss
+        return quantize, embed_ind,# loss
 
 
 class ResidualVectorQuantization(nn.Module):
@@ -474,14 +484,23 @@ class ResidualVectorQuantization(nn.Module):
         n_q = n_q or len(self.layers)
 
         for layer in self.layers[:n_q]:
-            quantized, indices, loss = layer(residual)
+            quantized, indices = layer(residual)
 
             #fix issue at https://github.com/facebookresearch/encodec/issues/25
-            residual = residual - quantized
-            # residual = residual - quantized.detach() 
+            residual = residual - quantized #NOTE: only first codebook commitment weights propagates back to x. 
+            # residual = residual - quantized.detach() #NOTE: quantized.detach() will hurt the STE estimator gradient making it not 1.
 
             quantized_out = quantized_out + quantized
+            
+            # Moved commitment loss to be betweewn quantizedout and x instead of quantized and residual,
+            # solves both problems above: propagtes to all codebooks, and preserve the STE estimator.
+            loss = torch.tensor([0.0], device=x.device, requires_grad=self.training)
 
+            if self.training:
+                commit_loss = F.mse_loss(quantized_out.detach(), x)
+                loss = loss + commit_loss  
+                loss = loss / n_q
+                
             all_indices.append(indices)
             all_losses.append(loss)
             quantized_stack.append(quantized)

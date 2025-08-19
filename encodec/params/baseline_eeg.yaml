@@ -12,7 +12,7 @@ common:
   num_workers: 4
   debug: false
 optimization:
-  lr: 0.0001
+  lr: 0.0002
   batch_size: 2
   beta1: 0.8
   beta2: 0.9
@@ -51,6 +51,7 @@ model:
     - 0.06
   audio_normalize: false
   causal: true
+  kmeans: false
   norm: layer_norm
   segment: None
   name: my_encodec

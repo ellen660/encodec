@@ -172,23 +172,23 @@ def train_one_step(
             epoch_loss += loss.item()
             global_codes = gather_codes(codes, world_size)
 
-            metrics = []
+            metrics_dict = []
 
             # global losses
-            metrics.append(losses_g["l_1"].item())               # 0
-            metrics.append(commit_loss.item())                   # 1
-            metrics.append(freq_loss_dict["l1_loss"].item())     # 2
-            metrics.append(freq_loss_dict["acc"].item())         # 3
+            metrics_dict.append(losses_g["l_1"].item())               # 0
+            metrics_dict.append(commit_loss.item())                   # 1
+            metrics_dict.append(freq_loss_dict["l1_loss"].item())     # 2
+            metrics_dict.append(freq_loss_dict["acc"].item())         # 3
 
             # dataset-specific losses
             ds_ids = list(ds_id)   # keep for mapping back
             for j, d_id in enumerate(ds_ids):
-                metrics.append(losses_g["l_t"][j].item())        # 4..N
+                metrics_dict.append(losses_g["l_t"][j].item())        # 4..N
             
             # generator-specific
             if train_generator and not train_discriminator:
-                metrics.append(losses_g["l_g"].item())           # after dataset losses
-                metrics.append(losses_g["l_feat"].item())
+                metrics_dict.append(losses_g["l_g"].item())           # after dataset losses
+                metrics_dict.append(losses_g["l_feat"].item())
 
             # gradient norm
             max_gradient = torch.tensor(0.0, device=device)
@@ -196,30 +196,30 @@ def train_one_step(
                 if param.grad is not None:
                     local_max = param.grad.abs().max()
                     max_gradient = torch.max(max_gradient, local_max)
-            metrics.append(max_gradient.item())                  # last slot
+            metrics_dict.append(max_gradient.item())                  # last slot
 
             # --- reduce all at once ---
-            metrics_tensor = torch.tensor(metrics, device=device)
-            metrics_tensor = reduce_mean(metrics_tensor, world_size).tolist()
+            metrics_tensor = torch.tensor(metrics_dict, device=device)
+            metrics_tensor = reduce_mean(metrics_tensor, world_size)
             
             # --- unpack back ---
-            loss_L1      = metrics_tensor[0].item()
-            commit_loss_ = metrics_tensor[1].item()
-            freq_L1      = metrics_tensor[2].item()
-            freq_acc     = metrics_tensor[3].item()
+            loss_L1      = metrics_tensor[0]
+            commit_loss_ = metrics_tensor[1]
+            freq_L1      = metrics_tensor[2]
+            freq_acc     = metrics_tensor[3]
             
             loss_L1_datasets = []
             offset = 4
             for j, d_id in enumerate(ds_ids):
-                loss_L1_datasets.append((d_id, metrics_tensor[offset + j].item()))
+                loss_L1_datasets.append((d_id, metrics_tensor[offset + j]))
             offset += len(ds_ids)
             
             if train_generator and not train_discriminator:
-                loss_g    = metrics_tensor[offset].item()
-                loss_feat = metrics_tensor[offset + 1].item()
+                loss_g    = metrics_tensor[offset]
+                loss_feat = metrics_tensor[offset + 1]
                 offset += 2
             
-            max_gradient = metrics_tensor[offset].item()
+            max_gradient = metrics_tensor[offset]
 
             # --- only rank 0 logs / plots ---
             if rank == 0:

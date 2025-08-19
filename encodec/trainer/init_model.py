@@ -8,9 +8,9 @@ from utils import print_model_details
 
 def init_model(config, train_discriminator: bool, save_path: str | None) -> tuple[EncodecModel, None]:
     model = EncodecModel._get_model(
-        config.model.target_bandwidths,
-        config.model.sample_rate,
-        config.model.channels,
+        target_bandwidths=config.model.target_bandwidths,
+        sample_rate=config.model.sample_rate,
+        channels=config.model.channels,
         causal=config.model.causal,
         model_norm=config.model.norm,
         # audio_normalize=config.model.audio_normalize,
@@ -18,6 +18,7 @@ def init_model(config, train_discriminator: bool, save_path: str | None) -> tupl
         ratios=config.model.ratios,
         bins=config.model.bins,
         dimension=config.model.dimension,
+        kmeans_init=config.model.kmeans
     )
     disc_model = None
 

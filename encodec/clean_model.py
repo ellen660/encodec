@@ -172,6 +172,7 @@ class EncodecModel(nn.Module):
                    ratios=[8, 5, 4, 2],
                    bins=256,
                    dimension=128,
+                   kmeans_init:bool=True
                    ):
 
         encoder = m.SEANetEncoder(channels=channels, norm=model_norm, causal=causal, ratios=ratios, dimension=dimension)
@@ -183,6 +184,7 @@ class EncodecModel(nn.Module):
             n_q=n_q,
             bins=bins,
             codebook_dim=encoder.dimension,
+            kmeans_init=kmeans_init
         )
 
         model = EncodecModel(
