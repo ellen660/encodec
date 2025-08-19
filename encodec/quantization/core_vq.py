@@ -43,6 +43,7 @@ import torch.nn.functional as F
 import encodec.distrib as distrib
 import sys
 import numpy as np
+import math
 
 
 def default(val: tp.Any, d: tp.Any) -> tp.Any:
@@ -56,11 +57,18 @@ def laplace_smoothing(x, n_categories: int, epsilon: float = 1e-5):
     return (x + epsilon) / (x.sum() + n_categories * epsilon)
 
 
-def uniform_init(*shape: int):
-    t = torch.empty(shape)
-    nn.init.kaiming_uniform_(t)
-    return t
+# def uniform_init(*shape: int):
+#     t = torch.empty(shape)
+#     nn.init.kaiming_uniform_(t)
+#     return t
 
+def uniform_init(*shape: int): #copy nn.Embedding initialization
+    assert len(shape) == 2, "Expect (codebook_size, dim)"
+    t = torch.empty(shape)
+    dim = shape[1]
+    bound = 1 / math.sqrt(dim)
+    nn.init.uniform_(t, -bound, bound)
+    return t
 
 def sample_vectors(samples, num: int):
     num_samples, device = samples.shape[0], samples.device
