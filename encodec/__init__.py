@@ -9,5 +9,5 @@
 
 __version__ = "0.1.2a3"
 
-from .model import EncodecModel
+# from .model import EncodecModel
 # from .compress import compress, decompress

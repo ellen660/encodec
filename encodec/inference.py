@@ -401,10 +401,9 @@ def get_code_distribution_ppg(model, model_name, test_datasets, datasets, channe
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--user_dir", type=str, default="/nobackup/users/ellen660/ML4H/encodec_models")
-    parser.add_argument("--save_dir", type=str, default="/nobackup/users/ellen660/encodec_codes/baseline")
-    # /nobackup/users/ellen660/ML4H/encodec_models/eeg/20250815_0933
-    parser.add_argument("--model_dir", type=str, default="eeg/20250815_0933")
+    parser.add_argument("--user_dir", type=str, default="/data/netmit/sleep_lab/ML4H/encodec_models")
+    parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes")
+    parser.add_argument("--model_dir", type=str, default="ppg/20250819_0206")
     parser.add_argument("--datasets",type=str, nargs='+', default=["mesa", "bwh", "mgh2"],help="List of dataset names (e.g., --datasets mesa bwh mgh2)")
     parser.add_argument("--resume", type=bool, default=True)
     # parser.add_argument("--do_channel", type=List[str], default=["chest"])
@@ -427,12 +426,12 @@ if __name__ == "__main__":
 
     
     #Initialize the model
-    model, _ = init_model(config=config, train_discriminator=False, save_path=None)
-    device = torch.device("cuda:2")
-    model = model.to(device)
-    epoch = load_checkpoint(model=model, optimizer=None, scheduler=None, path=f"{log_dir}/model.pth", device=device)
-    model.eval()    
-    save_dir = os.path.join(args.save_dir, args.model_dir, str(epoch), f'hopefully-better-now_{str(compression_ratio/config.model.sample_rate)}')
+    # model = build_model_from_config(config=config)
+    # device = torch.device("cuda:2")
+    # model = model.to(device)
+    # epoch = load_checkpoint(model=model, optimizer=None, scheduler=None, path=f"{log_dir}/model.pth", device=device)
+    # model.eval()    
+    save_dir = os.path.join(args.save_dir, args.model_dir, f'most_recent_encodec_with_distrib{str(compression_ratio/config.model.sample_rate)}')
     # Initialize directories
     if args.do_code_generation:
         os.makedirs(save_dir, exist_ok=True)
