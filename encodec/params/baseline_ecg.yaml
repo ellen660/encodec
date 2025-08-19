@@ -30,7 +30,7 @@ loss:
   weight_freq: 0.25
   weight_g: 3
   weight_feat: 3
-  commit_start_epoch: 30
+  commit_start_epoch: 0
 spectrogram_loss:
   alpha: 0.01
   bandwidth: null

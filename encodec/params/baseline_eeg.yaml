@@ -5,7 +5,7 @@ common:
   log_every: 5
   save_every: 5
   test_every: 10
-  max_epoch: 100
+  max_epoch: 135
   seed: 42
   gradient_clipping: false
   gradient_clipping_value: 0.1
@@ -18,7 +18,7 @@ optimization:
   beta2: 0.9
   warmup_epoch: 10
 dataset:
-  max_length: 4600
+  max_length: 5400
   #total number of codes per batch: max_length * sample_rate * batch_size / (ratios)
   external: false
   cv: 0
@@ -31,7 +31,7 @@ loss:
   weight_freq: 0.25
   weight_g: 3
   weight_feat: 3
-  commit_start_epoch: 30
+  commit_start_epoch: 0
 spectrogram_loss:
   alpha: 0.01
   bandwidth: null

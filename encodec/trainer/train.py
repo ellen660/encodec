@@ -360,6 +360,6 @@ def plot_codebook(all_codes, writer, epoch, config):
     ax.set_ylim(0, math.log2(config.model.bins))
     fig.tight_layout()
     # writer.add_figure(f"Entropy/{epoch}", fig)
-    writer.add_figure("Entropy/Codebooks", fig, global_step=epoch)
+    writer.add_figure("Entropy/minibatch_Codebooks", fig, global_step=epoch)
     plt.close(fig)
 
