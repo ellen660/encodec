@@ -72,7 +72,6 @@ def train_one_step(
     data_loading = 0
     to_device = 0
     forward_time = 0
-    all_codes = []
 
     for i, (item, ds_id) in enumerate(tqdm(train_loader,desc=f"Training Epoch {epoch}",unit="batch",disable=(rank != 0),)):
         x = item["x"]
@@ -241,8 +240,6 @@ def train_one_step(
                         "Loss Feature": loss_feat.item(),
                     }, step)
 
-                all_codes.append(global_codes.cpu())
-                plot_codebook(all_codes=all_codes, epoch=epoch, config=config, writer=writer)
                 if i == 0:
                     plot_reconstruction(x=x, x_hat=x_hat, freq_loss_dict=freq_loss_dict,
                                         log_dir=log_dir, epoch=epoch, config=config)
@@ -257,6 +254,7 @@ def train_one_step(
         epoch_loss_global = reduce_mean(torch.tensor(epoch_loss, device=device), dist.get_world_size())
 
         if rank == 0:
+            plot_codebook(all_codes=global_codes.cpu()), epoch=epoch, config=config, writer=writer)
             print(
                 f"Epoch {epoch}: Data loading time: {data_loading/i:.4f}s, To device time: {to_device/i:.4f}s, Forward pass time: {forward_time/i:.4f}s"
             )
