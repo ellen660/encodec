@@ -126,45 +126,45 @@ def train_one_step(
 
         forward_time += time.time() - start_forward_time
 
-        if train_discriminator:
-            logits_real, _ = disc(x)
-            logits_fake, _ = disc(x_hat.detach())
-            loss_disc = disc_loss(logits_real, logits_fake)
+        # if train_discriminator:
+        #     logits_real, _ = disc(x)
+        #     logits_fake, _ = disc(x_hat.detach())
+        #     loss_disc = disc_loss(logits_real, logits_fake)
 
-            optimizer_disc.zero_grad()
-            loss_disc.backward()
-            if config.common.gradient_clipping:
-                torch.nn.utils.clip_grad_norm_(disc.parameters(), config.common.gradient_clipping_value)
-            optimizer_disc.step()
+        #     optimizer_disc.zero_grad()
+        #     loss_disc.backward()
+        #     if config.common.gradient_clipping:
+        #         torch.nn.utils.clip_grad_norm_(disc.parameters(), config.common.gradient_clipping_value)
+        #     optimizer_disc.step()
 
-            if epoch % config.common.log_every == 1:
-                epoch_loss += loss_disc_tensor.item()
+        #     if epoch % config.common.log_every == 1:
+        #         epoch_loss += loss_disc_tensor.item()
                 
-                # Reduce discriminator loss
-                loss_disc_tensor = torch.tensor(loss_disc.item(), device=device)
-                loss_disc_tensor = reduce_mean(loss_disc_tensor, dist.get_world_size())
+        #         # Reduce discriminator loss
+        #         loss_disc_tensor = torch.tensor(loss_disc.item(), device=device)
+        #         loss_disc_tensor = reduce_mean(loss_disc_tensor, dist.get_world_size())
 
-                # Reduce logits
-                logits_real_mean = (logits_real[0].mean() + logits_real[1].mean()) / 2
-                logits_fake_mean = (logits_fake[0].mean() + logits_fake[1].mean()) / 2
-                logits_real_tensor = reduce_mean(logits_real_mean.detach(), dist.get_world_size())
-                logits_fake_tensor = reduce_mean(logits_fake_mean.detach(), dist.get_world_size())
+        #         # Reduce logits
+        #         logits_real_mean = (logits_real[0].mean() + logits_real[1].mean()) / 2
+        #         logits_fake_mean = (logits_fake[0].mean() + logits_fake[1].mean()) / 2
+        #         logits_real_tensor = reduce_mean(logits_real_mean.detach(), dist.get_world_size())
+        #         logits_fake_tensor = reduce_mean(logits_fake_mean.detach(), dist.get_world_size())
 
-                # Reduce max gradient
-                max_disc_gradient = torch.tensor(0.0, device=device)
-                for param in disc.parameters():
-                    if param.grad is not None:
-                        local_max = param.grad.abs().max()
-                        max_disc_gradient = torch.max(max_disc_gradient, local_max)
-                max_disc_gradient = reduce_mean(max_disc_gradient, dist.get_world_size())
+        #         # Reduce max gradient
+        #         max_disc_gradient = torch.tensor(0.0, device=device)
+        #         for param in disc.parameters():
+        #             if param.grad is not None:
+        #                 local_max = param.grad.abs().max()
+        #                 max_disc_gradient = torch.max(max_disc_gradient, local_max)
+        #         max_disc_gradient = reduce_mean(max_disc_gradient, dist.get_world_size())
 
-                # Only rank 0 logs
-                if rank == 0:
-                    step = epoch * len(train_loader) + i
-                    metrics.fill_metrics({"Loss Discriminator": loss_disc_tensor.item()}, step)
-                    metrics.fill_metrics({"Logits Real": logits_real_tensor.item()}, step)
-                    metrics.fill_metrics({"Logits Fake": logits_fake_tensor.item()}, step)
-                    metrics.fill_metrics({"Max Discriminator Gradient": max_disc_gradient.item()}, step)
+        #         # Only rank 0 logs
+        #         if rank == 0:
+        #             step = epoch * len(train_loader) + i
+        #             metrics.fill_metrics({"Loss Discriminator": loss_disc_tensor.item()}, step)
+        #             metrics.fill_metrics({"Logits Real": logits_real_tensor.item()}, step)
+        #             metrics.fill_metrics({"Logits Fake": logits_fake_tensor.item()}, step)
+        #             metrics.fill_metrics({"Max Discriminator Gradient": max_disc_gradient.item()}, step)
 
         if epoch % config.common.log_every == 1:
             world_size = dist.get_world_size()
@@ -254,7 +254,7 @@ def train_one_step(
         epoch_loss_global = reduce_mean(torch.tensor(epoch_loss, device=device), dist.get_world_size())
 
         if rank == 0:
-            plot_codebook(all_codes=global_codes.cpu()), epoch=epoch, config=config, writer=writer)
+            plot_codebook(all_codes=global_codes.cpu(), epoch=epoch, config=config, writer=writer)
             print(
                 f"Epoch {epoch}: Data loading time: {data_loading/i:.4f}s, To device time: {to_device/i:.4f}s, Forward pass time: {forward_time/i:.4f}s"
             )
