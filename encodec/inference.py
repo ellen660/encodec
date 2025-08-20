@@ -451,14 +451,26 @@ if __name__ == "__main__":
                 if f.endswith(".npz")
             }
             done = frozenset(done)
+            inference_dataset.all_files = [f for f in inference_dataset.all_files if f not in done]
+            print(f'files remaining {len(inference_dataset)}')
         
         def launch_multi_gpu_processing(test_ds, build_model_fn, model_ckpt_path, save_dir, compression_ratio, done, fs, config):
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+
             device_ids = list(range(torch.cuda.device_count()))
             num_gpus = len(device_ids)
 
+            # 🔀 Shuffle indices before splitting
+            indices = np.arange(len(test_ds))
+
             chunk_size = len(test_ds) // num_gpus
-            subsets = [Subset(test_ds, range(i * chunk_size, (i + 1) * chunk_size)) for i in range(num_gpus - 1)]
-            subsets.append(Subset(test_ds, range((num_gpus - 1) * chunk_size, len(test_ds))))  # last chunk
+            subsets = [Subset(test_ds, indices[i * chunk_size:(i + 1) * chunk_size]) for i in range(num_gpus - 1)]
+            subsets.append(Subset(test_ds, indices[(num_gpus - 1) * chunk_size:]))  # last chunk gets remainder
+
+            ctx = mp.get_context('spawn')
+            processes = []
             
             ctx = mp.get_context('spawn')
             processes = []
