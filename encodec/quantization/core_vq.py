@@ -40,7 +40,7 @@ from torch import nn
 import torch.nn.functional as F
 
 # from .. import distrib
-import encodec.distrib as distrib
+import distrib 
 import sys
 import numpy as np
 import math

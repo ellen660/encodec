@@ -401,11 +401,9 @@ def get_code_distribution_ppg(model, model_name, test_datasets, datasets, channe
 
 def set_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--user_dir", type=str, default="/data/netmit/sleep_lab/ML4H/encodec_models")
-    parser.add_argument("--save_dir", type=str, default="/data/netmit/sleep_lab/encodec_codes")
     parser.add_argument("--model_dir", type=str, default="eeg/20250819_1343")
     parser.add_argument("--datasets",type=str, nargs='+', default=["mesa", "bwh", "mgh2"],help="List of dataset names (e.g., --datasets mesa bwh mgh2)")
-    parser.add_argument("--resume", type=bool, default=True)    
+    parser.add_argument("--resume", type=bool, default=True)
     # parser.add_argument("--do_channel", type=List[str], default=["chest"])
     parser.add_argument("--do_code_generation", type=bool, default=True)
     parser.add_argument("--do_token_distribution", type=bool, default=False)
@@ -414,6 +412,18 @@ def set_args():
 
 if __name__ == "__main__":
     args = set_args()
+
+    import subprocess
+    import sys
+    
+    arch = subprocess.check_output(['uname', '-m'], text=True).strip()
+    if arch == "ppc64le":
+        args.user_dir = "/nobackup/users/ellen660/ML4H/encodec_models"
+        args.save_dir =  "/nobackup/users/ellen660/encodec_codes/baseline"
+    else:
+        args.user_dir = "/data/netmit/sleep_lab/ML4H/encodec_models"
+        args.save_dir = "/data/netmit/sleep_lab/encodec_codes"
+    
     log_dir = os.path.join(args.user_dir, args.model_dir)
     datasets = args.datasets
     resume = args.resume
@@ -451,6 +461,8 @@ if __name__ == "__main__":
                 if f.endswith(".npz")
             }
             done = frozenset(done)
+            inference_dataset.all_files = [f for f in inference_dataset.all_files if f not in done]
+            print(f'files remaining {len(inference_dataset)}')
         
         def launch_multi_gpu_processing(test_ds, build_model_fn, model_ckpt_path, save_dir, compression_ratio, done, fs, config):
             device_ids = list(range(torch.cuda.device_count()))
